@@ -5,6 +5,9 @@ Put uDPRE mod packs here: one folder per pack, each holding a file named udpre_m
 (for example  mods\Luminescent\udpre_mod.json). Then open uDPRE.exe, tick the mods you want
 in the "Mods" box and press Convert (or Apply).
 
+uDPRE does not include any mod pack. Look for uDPRE mod packs online, or ask someone who
+already has them.
+
 Luminescent Platinum: the pack holds only the PC version of Luminescent's game code. Put your
 own download of Luminescent Platinum 2.2F for Brilliant Diamond here too: extract it with
 7-Zip and put the extracted folder (the one with "romfs" and "exefs" inside) into this mods
