@@ -146,6 +146,11 @@ def is_installed(p):
     return status(p)['state'] == 'ready'
 
 
+def release_info(p):
+    """udpre/release.json: uDPRE version, base_version (the uDPR game build the player is) ..."""
+    return _load_json(os.path.join(p.data, 'release.json'), {})
+
+
 class Setup:
     """What a conversion uses besides the dump: the chosen mods, the player profile, the shader pack and player base.
     picked = {source id: folder} downloads the player pointed at outside the mods folder."""

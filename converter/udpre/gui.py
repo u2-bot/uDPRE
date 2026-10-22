@@ -4,6 +4,7 @@ import queue
 import subprocess
 import threading
 import tkinter as tk
+import webbrowser
 from tkinter import filedialog, messagebox, ttk
 
 from . import __version__, install, mods as modlib
@@ -17,7 +18,8 @@ class App:
         self.q = queue.Queue()
         self.worker = None
         self.win = tk.Tk()
-        self.win.title(TITLE)
+        base = install.release_info(self.paths).get('base_version')
+        self.win.title(TITLE + (f' (game base v{base})' if base else ''))
         self.win.geometry('700x700')
         self.win.minsize(600, 660)
         self.win.protocol('WM_DELETE_WINDOW', self.on_close)
@@ -56,6 +58,9 @@ class App:
         btns.pack(side='bottom', fill='x', **pad)            # packed before the log: the buttons always stay visible
         self.log = tk.Text(self.win, height=6, wrap='word', state='disabled', font=('Consolas', 9))
         self.log.pack(fill='both', expand=True, **pad)
+        base = install.release_info(self.paths).get('base_version')
+        ttk.Label(btns, text=f'uDPRE {__version__}' + (f'  ·  game base v{base}' if base else ''),
+                  foreground='#666').pack(side='left')
         self.go = ttk.Button(btns, text='Convert', command=self.start)
         self.go.pack(side='right')
         self.play_btn = ttk.Button(btns, text='Play', command=self.play)
@@ -82,7 +87,17 @@ class App:
             missing = m.missing_sources()
             if missing:
                 text += '   - needs your own ' + ', '.join(m.sources[s].get('name', s) for s in missing)
-            ttk.Checkbutton(self.mod_rows, text=text, variable=v, command=lambda i=m.id: self.toggle(i)).pack(anchor='w')
+            row = ttk.Frame(self.mod_rows)
+            row.pack(anchor='w', fill='x')
+            ttk.Checkbutton(row, text=text, variable=v, command=lambda i=m.id: self.toggle(i)).pack(side='left')
+            if m.author or m.url:
+                credit = (f'by {m.author}' if m.author else '') + (' · ' if m.author and m.url else '') + \
+                         ('mod page' if m.url else '')
+                link = ttk.Label(row, text=credit, foreground='#1a5fb4' if m.url else '#666',
+                                 cursor='hand2' if m.url else '')
+                link.pack(side='left', padx=(10, 0))
+                if m.url:
+                    link.bind('<Button-1>', lambda _e, u=m.url: webbrowser.open(u))
             self.mod_vars[m.id] = v
         for t in problems:
             ttk.Label(self.mod_rows, text='Cannot use: ' + t, foreground='#a33', wraplength=600).pack(anchor='w')

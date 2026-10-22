@@ -3,7 +3,7 @@
   py -3.13 -I release/make_pack.py SPEC.json OUT_DIR --dump SWITCH_DATA [--census SWITCH_CENSUS.jsonl]
                                    [--forbid DIR]...
 SPEC.json:
-  {"manifest": {"id", "name", "version", "order", "requires", "conflicts", "description"},
+  {"manifest": {"id", "name", "version", "author", "url", "order", "requires", "conflicts", "description"},
    "layers": [{"dir": "romfs", "kind": "romfs" | "files", "when": [...], "unless": [...], "copy": {REL: REL},
                "sources": [{"tree": DIR, "include": [glob...], "exclude": [glob...]} | {"file": PATH, "as": REL}]}
               | {"kind": "source", "source": ID, "name": TEXT, "where": TEXT, "key": REL, "sources": [...as above...]}],
@@ -31,7 +31,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import make_release as mr  # noqa: E402
 
-MANIFEST_KEYS = ('id', 'name', 'version', 'order', 'requires', 'conflicts', 'description')
+MANIFEST_KEYS = ('id', 'name', 'version', 'author', 'url', 'order', 'requires', 'conflicts', 'description')
 
 
 def link(src, dst):

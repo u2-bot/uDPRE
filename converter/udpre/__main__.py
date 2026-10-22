@@ -82,6 +82,8 @@ def main(argv=None):
             extra = ''.join([f'  needs {",".join(m.requires)}' if m.requires else '',
                              f'  not with {",".join(m.conflicts)}' if m.conflicts else ''])
             print(f'  [{"x" if m.id in on else " "}] {m.id:<14} {m.name} {m.version}{extra}')
+            if m.author or m.url:
+                print(f'        by {m.author or "-"}' + (f'  {m.url}' if m.url else ''))
             for sid in m.sources:
                 where = m.source_paths.get(sid)
                 print(f'        your {m.sources[sid].get("name", sid)}: '
@@ -112,6 +114,8 @@ def main(argv=None):
         p = install.Paths(root)
         st = install.status(p)
         cfg = install.load_config(p)
+        info = install.release_info(p)
+        print(f'uDPRE {info.get("udpre_version", "?")}, game base v{info.get("base_version", "?")}')
         print(f'state: {st["state"]}' + (f' ({st["reason"]})' if st['reason'] else ''))
         if st['stale']:
             print(f'bundles to convert again: {", ".join(st["stale"])}')

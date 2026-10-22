@@ -63,6 +63,22 @@ From a command prompt: `uDPRE.exe mods` lists the packs and the downloads they f
 points uDPRE at a download kept elsewhere, and `uDPRE.exe convert --mods luminescent,easymode` converts with those mods
 (`--mods none` turns them all off).
 
+### Mod credits
+
+The mods are the work of their authors; the uDPRE packs only make them run on the uDPR Windows player. Each mod's line in
+the Mods box links to its page. Please endorse and support the authors there:
+
+| Mod | Author | Page |
+|---|---|---|
+| Luminescent Platinum 2.2F | Team Luminescent | https://www.nexusmods.com/pokemonbdsp/mods/1 |
+| Easy-Mode patch for Luminescent Platinum | Blupblurp | https://www.nexusmods.com/pokemonbdsp/mods/53 |
+| Dechibified Platinum | Adomin8er | https://www.nexusmods.com/pokemonbdsp/mods/38 |
+| No Balance Changes for Luminescent Platinum | ClemiNeko | https://www.nexusmods.com/pokemonbdsp/mods/48 |
+| Luminescent Platinum French Translation Patch | Team French | https://www.nexusmods.com/pokemonbdsp/mods/44 |
+| Luminescent Platinum Spanish Translation (Castellano, Latam) | Blupblurp | https://www.nexusmods.com/pokemonbdsp/mods/49 |
+| Luminescent Platinum - IT Language | hangel87 | https://www.nexusmods.com/pokemonbdsp/mods/91 |
+| Luminescent Platinum - Traducao PT-BR | Jeeeff07 | https://www.nexusmods.com/pokemonbdsp/mods/84 |
+
 ## Updates
 
 1. Download the new release from the Releases page.

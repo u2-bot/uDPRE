@@ -1,6 +1,8 @@
 """Assemble a uDPRE release folder from a Windows player build of the uDPR project (no game data inside).
 
-  py -3.13 -I release/make_release.py PLAYER_DIR SWITCH_DATA OUT_DIR [--census SWITCH_CENSUS.jsonl] [--exe DIST_DIR]
+  py -3.13 -I release/make_release.py PLAYER_DIR SWITCH_DATA OUT_DIR --base-version 1.2.3 [--census SWITCH_CENSUS.jsonl]
+                                      [--exe DIST_DIR]
+--base-version = the version of the uDPR game build PLAYER_DIR is (the game fixes the release carries), shown in the window.
 Steps: copy our player files (every file except the game data below) -> make_player_base (renumbered registry + base
 globalgamemanagers) -> make_shaderpack -> udpre/bundles.txt + release.json + player_files.json (the files a mod pack's player
 replaces, with their hashes) + an empty mods/ folder with its README -> (optional) the frozen converter from DIST_DIR
@@ -222,7 +224,10 @@ def main():
     a = sys.argv[1:]
     census = a[a.index('--census') + 1] if '--census' in a else None
     exe = a[a.index('--exe') + 1] if '--exe' in a else None
-    flags = {'--census', '--exe'}
+    base_version = a[a.index('--base-version') + 1] if '--base-version' in a else None
+    if not base_version:
+        sys.exit('--base-version VERSION is needed: the version of the uDPR game build the player is (shown in the window)')
+    flags = {'--census', '--exe', '--base-version'}
     pos = [x for i, x in enumerate(a) if x not in flags and (i == 0 or a[i - 1] not in flags)]
     player, switch_data, out = (os.path.abspath(x) for x in pos[:3])
     if os.path.exists(out) and os.listdir(out):
@@ -239,7 +244,8 @@ def main():
         (['--census', census] if census else []))
     shutil.copyfile(os.path.join(HERE, 'bundles.txt'), os.path.join(out, 'udpre', 'bundles.txt'))
     from udpre import CONVERT_VERSION, __version__
-    info = {'udpre_version': __version__, 'convert_version': CONVERT_VERSION, 'player': os.path.basename(player),
+    info = {'udpre_version': __version__, 'convert_version': CONVERT_VERSION, 'base_version': base_version,
+            'player': os.path.basename(player),
             'made': time.strftime('%Y-%m-%d %H:%M:%S'), 'game': 'Pokemon Brilliant Diamond v1.3.0 (Switch dump, romfs)'}
     if exe:
         for rel in rel_files(exe):

@@ -1,7 +1,8 @@
 """Mod packs: what lies in <uDPRE folder>/mods, which ones are on, and the layer stack they make over the dump.
 
 A mod pack is a folder with udpre_mod.json (format 1):
-  id, name, version, order (layer position: higher = on top), requires / conflicts (ids), player (optional folder of a player
+  id, name, version, author + url (credit: the mod's authors and its own page), order (layer position: higher = on top),
+  requires / conflicts (ids), player (optional folder of a player
   profile), sources (optional: downloads the PLAYER brings - {id: {"name", "where", "list", "key"}}; list = a JSON file
   {romfs path: [size, sha1]} of the files the pack uses, key = the romfs path that identifies the download), layers = list of
     {"romfs": DIR}    SWITCH files with their romfs/Data paths, converted like the dump;
@@ -59,6 +60,8 @@ class Mod:
         self.player = data.get('player')
         self.layers = list(data.get('layers', []))
         self.description = data.get('description', '')
+        self.author = data.get('author', '')            # the mod's author(s), credited in the window
+        self.url = data.get('url', '')                  # the mod's own page (Nexus Mods)
         self.sources = dict(data.get('sources', {}))
         self.source_paths = {}          # source id -> romfs/Data folder of the player's download (found by discover)
         self._lists = {}

@@ -65,12 +65,13 @@ machine. The dump is used for IDs, names and the audit; nothing of it is copied 
 ```
 py -3.13 -m pip install -r converter/requirements.txt -r release/requirements-build.txt
 py -3.13 -I release/build_exe.py                         # -> build/dist/uDPRE (uDPRE.exe + udpre_runtime/)
-py -3.13 -I release/make_release.py PLAYER_DIR DUMP/romfs/Data OUT_DIR --exe build/dist/uDPRE
+py -3.13 -I release/make_release.py PLAYER_DIR DUMP/romfs/Data OUT_DIR --base-version 1.2.3 --exe build/dist/uDPRE
 ```
 
 `make_release.py` copies the player without its game data, builds the player base and the shader pack, copies
 `LICENSE`, `THIRD-PARTY-NOTICES.md`, `README.md` and the license texts of every package in the converter runtime
-(`udpre/licenses/`), writes `udpre/release.json`, and runs the **audit**. The audit fails the release when any file has the bytes of a dump file (Unity's
+(`udpre/licenses/`), writes `udpre/release.json` (with `base_version` = the version of the uDPR game build the player is;
+the window shows it as "game base v..."), and runs the **audit**. The audit fails the release when any file has the bytes of a dump file (Unity's
 own `mscorlib.dll-resources.dat` is the one allowed match), or when a serialized file of ours holds textures, meshes,
 sounds, text, scripts' data or other game objects.
 
