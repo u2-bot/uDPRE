@@ -1,11 +1,13 @@
 """Build udpre/shaders.pack (our Windows shader objects) from a Windows player build of the uDPR project.
 
-  py -3.13 -I release/make_shaderpack.py PLAYER_DIR SWITCH_DATA OUT.pack [--census SWITCH_CENSUS.jsonl]
+  py -3.13 -I release/make_shaderpack.py PLAYER_DIR SWITCH_DATA OUT.pack [--census SWITCH_CENSUS.jsonl]...
+                                         [--overlay MOD_ROMFS_DATA]...
 PLAYER_DIR = a Windows player (…/Dpr.exe beside Dpr_Data); SWITCH_DATA = the dump's romfs/Data (only to list which containers
-hold Shader objects the game loads - nothing of the dump goes into the pack).
+hold Shader objects the game loads - nothing of the dump goes into the pack). --overlay = a mod's Switch romfs/Data whose
+bundles replace / add to the dump's (a mod pack's shader pack is made from the player built WITH that mod).
 Containers: every bundle under AssetAssistant that holds a Shader object on the Switch AND is in the release bundle list
-(release/bundles.txt), plus resources.assets. Each entry = the Windows Shader typetree with its references stored by meaning
-(see converter/udpre/shaderpack.py).
+(release/bundles.txt) or an overlay, plus resources.assets. Each entry = the Windows Shader typetree with its references
+stored by meaning (see converter/udpre/shaderpack.py).
 """
 import os
 import pickle
@@ -138,19 +140,50 @@ def pack_file(path, container, pc_shader_names, entries, switch_path):
             shaderpack.entry_digest(entries[key])
 
 
+def overlay_files(overlays):
+    """{bundle path under AssetAssistant: Switch file} of mod romfs/Data folders (later ones win)."""
+    out = {}
+    for ov in overlays:
+        aa = os.path.join(ov, 'StreamingAssets', 'AssetAssistant')
+        for d, _, fs in os.walk(aa):
+            for f in fs:
+                rel = os.path.relpath(os.path.join(d, f), aa).replace(os.sep, '/')
+                if rel != 'Dpr.bin' and not rel.endswith('.manifest'):
+                    out[rel] = os.path.join(d, f)
+    return out
+
+
 def main():
-    player, switch_data, out = sys.argv[1:4]
+    a = sys.argv[1:]
+    flags = {'--census', '--overlay'}
+    census = [a[i + 1] for i, x in enumerate(a) if x == '--census']
+    overlays = [a[i + 1] for i, x in enumerate(a) if x == '--overlay']
+    player, switch_data, out = [x for i, x in enumerate(a) if x not in flags and (i == 0 or a[i - 1] not in flags)][:3]
     pc_aa = os.path.join(player, 'Dpr_Data', 'StreamingAssets', 'AssetAssistant')
     sw_aa = os.path.join(switch_data, 'StreamingAssets', 'AssetAssistant')
     bundles = [l.strip() for l in open(os.path.join(HERE, 'bundles.txt'), encoding='utf-8') if l.strip()]
-    census = sys.argv[sys.argv.index('--census') + 1] if '--census' in sys.argv else None
-    containers = shader_containers(sw_aa, bundles, census)
+    mod_files = overlay_files(overlays)
+    bundles = sorted(set(bundles) | set(mod_files))
+    containers = set()
+    for c in census or [None]:
+        containers |= set(shader_containers(sw_aa, bundles, c))
+    # a mod bundle that holds shaders (Luminescent's own c10r0101 ...) is a container too, when the player has a build of it
+    for rel, path in mod_files.items():
+        if rel not in containers and os.path.isfile(os.path.join(pc_aa, *rel.split('/'))):
+            try:
+                env = UnityPy.load(path)
+                if any(o.type.name == 'Shader' for _, sf in serialized_files(env) for o in sf.objects.values()):
+                    containers.add(rel)
+            except Exception as e:
+                print(f'  {rel}: not readable ({type(e).__name__}) - left out')
+    containers = sorted(c for c in containers if os.path.isfile(os.path.join(pc_aa, *c.split('/'))))
     print('containers with Shader objects:', containers)
     env = UnityPy.load(os.path.join(pc_aa, 'Dpr', 'shaders'))
     pc_shader_names = {o.path_id: shaderpack.shader_name(o) for o in env.objects if o.type.name == 'Shader'}
     entries = {}
     for c in containers:
-        pack_file(os.path.join(pc_aa, *c.split('/')), c, pc_shader_names, entries, os.path.join(sw_aa, *c.split('/')))
+        sw_path = mod_files.get(c) or os.path.join(sw_aa, *c.split('/'))
+        pack_file(os.path.join(pc_aa, *c.split('/')), c, pc_shader_names, entries, sw_path)
     pack_file(os.path.join(player, 'Dpr_Data', 'resources.assets'), 'resources.assets', pc_shader_names, entries,
               os.path.join(switch_data, 'resources.assets'))
     d = {'version': shaderpack.PACK_VERSION, 'entries': entries,

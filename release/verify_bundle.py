@@ -17,6 +17,7 @@ def check(args):
     sw_path, out_path, rel = args
     import UnityPy
     from udpre import textures
+    from udpre.bundle import read_tree
     from udpre.unityfiles import serialized_files
     errs = []
     n = {'objects': 0, 'tex': 0, 'mesh': 0, 'shader': 0, 'same': 0}
@@ -54,7 +55,7 @@ def check(args):
                     errs.append(f'{pid}: type {t} != {ob.type.name}')
                     continue
                 if t in ('Texture2D', 'Cubemap'):
-                    ta, tb = oa.read_typetree(), ob.read_typetree()
+                    (ta, _), (tb, _) = read_tree(oa, {}), read_tree(ob, {})
                     da = stream(streams_a, ta['m_StreamData']) or bytes(ta.get('image data', b'') or b'')
                     db = stream(streams_b, tb['m_StreamData']) or bytes(tb.get('image data', b'') or b'')
                     fmt, want, _ = textures.convert(ta['m_TextureFormat'], ta['m_Width'], ta['m_Height'], ta['m_MipCount'],
@@ -68,7 +69,11 @@ def check(args):
                             errs.append(f'texture {ta["m_Name"]}: field {k} changed')
                     n['tex'] += 1
                 elif t == 'Mesh':
-                    ta, tb = oa.read_typetree(), ob.read_typetree()
+                    # the converter's own reader: a mod mesh with a zero tail beyond its type tree is read once the
+                    # round trip is proven, and the tail must survive unchanged
+                    (ta, tail_a), (tb, tail_b) = read_tree(oa, {}), read_tree(ob, {})
+                    if tail_a != tail_b:
+                        errs.append(f'mesh {pid}: tail {tail_a.hex()} became {tail_b.hex()}')
                     if stream(streams_a, ta.get('m_StreamData')) != stream(streams_b, tb.get('m_StreamData')):
                         errs.append(f'mesh {pid}: stream bytes differ')
                     for k in ta:

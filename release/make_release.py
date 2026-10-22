@@ -2,7 +2,8 @@
 
   py -3.13 -I release/make_release.py PLAYER_DIR SWITCH_DATA OUT_DIR [--census SWITCH_CENSUS.jsonl] [--exe DIST_DIR]
 Steps: copy our player files (every file except the game data below) -> make_player_base (renumbered registry + base
-globalgamemanagers) -> make_shaderpack -> udpre/bundles.txt + release.json -> (optional) the frozen converter from DIST_DIR
+globalgamemanagers) -> make_shaderpack -> udpre/bundles.txt + release.json + player_files.json (the files a mod pack's player
+replaces, with their hashes) + an empty mods/ folder with its README -> (optional) the frozen converter from DIST_DIR
 (release/build_exe.py output) -> audit.
 Left out of the release (the converter makes them from the user's dump): StreamingAssets/AssetAssistant (every bundle and
 Dpr.bin), StreamingAssets/Audio, StreamingAssets/Movie, resources.assets(.resS), globalgamemanagers (the base copy lives in
@@ -33,6 +34,9 @@ GAME_TYPES = {'Texture2D', 'Cubemap', 'Mesh', 'AudioClip', 'VideoClip', 'TextAss
 ALLOWED_GAMEOBJECT_FILES = {'Dpr_Data/level0'}      # our boot scene: one empty GameObject "Suspend"
 # files whose bytes every Unity 2019.4 IL2CPP player shares (Unity's runtime, not the game's): equal to the dump's copy
 UNITY_RUNTIME_FILES = {'Dpr_Data/il2cpp_data/Resources/mscorlib.dll-resources.dat'}
+# the player files a mod pack's player profile replaces (its game code, company name = save folder, script registry)
+PROFILE_FILES = ['GameAssembly.dll', 'Dpr_Data/il2cpp_data/Metadata/global-metadata.dat', 'Dpr_Data/app.info',
+                 'Dpr_Data/globalgamemanagers.assets']
 
 
 def sha1(path):
@@ -241,6 +245,11 @@ def main():
         shutil.copyfile(os.path.join(REPO, f), os.path.join(out, f))
     with open(os.path.join(out, 'udpre', 'release.json'), 'w', encoding='utf-8') as f:
         json.dump(info, f, indent=1)
+    # the player files a mod pack's profile may replace: the converter keeps ours aside and puts them back by these hashes
+    with open(os.path.join(out, 'udpre', 'player_files.json'), 'w', encoding='utf-8') as f:
+        json.dump({'files': {rel: sha1(os.path.join(out, *rel.split('/'))) for rel in PROFILE_FILES}}, f, indent=1)
+    os.makedirs(os.path.join(out, 'mods'), exist_ok=True)
+    shutil.copyfile(os.path.join(HERE, 'mods_README.txt'), os.path.join(out, 'mods', 'README.txt'))
     files, problems = audit(out, switch_data, local_markers(player, switch_data, REPO))
     rep = os.path.join(out, 'udpre', 'audit.txt')
     with open(rep, 'w', encoding='utf-8', newline='\n') as f:

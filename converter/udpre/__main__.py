@@ -1,9 +1,11 @@
 """uDPRE entry point.
 
-  uDPRE.exe                         window: pick the dump once, convert, play (gui.py)
-  uDPRE.exe convert [DUMP] [--workers N] [--root DIR]   console conversion (no DUMP = the dump of the last conversion;
-                                                        after an update it makes only what the update needs)
-  uDPRE.exe status [--root DIR]                         ready / refresh needed / not converted
+  uDPRE.exe                         window: pick the dump once, choose mods, convert, play (gui.py)
+  uDPRE.exe convert [DUMP] [--mods ID,ID|none] [--workers N] [--root DIR]
+                                    console conversion (no DUMP = the dump of the last conversion; no --mods = the mods chosen
+                                    last time; after an update or a mod change it makes only what changed)
+  uDPRE.exe mods [--root DIR]       the mod packs in the mods folder and which ones are on
+  uDPRE.exe status [--root DIR]     ready / refresh needed / not converted
 Without --root the uDPRE folder is the one holding the executable (frozen) or the current folder.
 """
 import os
@@ -44,6 +46,7 @@ def main(argv=None):
     args = list(sys.argv[1:] if argv is None else argv)
     root = opt(args, '--root', default_root())
     workers = opt(args, '--workers')
+    mods = opt(args, '--mods')
     if not args:
         from . import gui
         return gui.main(root)
@@ -58,13 +61,27 @@ def main(argv=None):
             if last.get(stage) != k:
                 last[stage] = k
                 print(f'{stage}: {done}/{total}', flush=True)
+        chosen = None if mods is None else [m for m in mods.split(',') if m and m != 'none']
         try:
             r = install.run(root, args[0] if args else None, int(workers) if workers else None, progress,
-                            lambda s: print(s, flush=True))
+                            lambda s: print(s, flush=True), mods=chosen)
         except (install.DumpError, install.ConvertError) as e:
             print(f'PROBLEM: {e}')
             return 1
         print(f'done: {r}')
+        return 0
+    if cmd == 'mods':
+        from . import mods as modlib
+        p = install.Paths(root)
+        found, problems = modlib.discover(p.mods)
+        on = install.load_config(p).get('mods', [])
+        print(f'mods folder: {p.mods}')
+        for m in sorted(found.values(), key=lambda m: (m.order, m.id)):
+            extra = ''.join([f'  needs {",".join(m.requires)}' if m.requires else '',
+                             f'  not with {",".join(m.conflicts)}' if m.conflicts else ''])
+            print(f'  [{"x" if m.id in on else " "}] {m.id:<14} {m.name} {m.version}{extra}')
+        for t in problems:
+            print(f'  cannot use: {t}')
         return 0
     if cmd == 'status':
         p = install.Paths(root)
@@ -73,7 +90,8 @@ def main(argv=None):
         print(f'state: {st["state"]}' + (f' ({st["reason"]})' if st['reason'] else ''))
         if st['stale']:
             print(f'bundles to convert again: {", ".join(st["stale"])}')
-        print(f'dump: {cfg.get("dump", "-")}\nlast completed: {cfg.get("completed", "-")}')
+        print(f'dump: {cfg.get("dump", "-")}\nmods: {", ".join(cfg.get("mods", [])) or "-"}\n'
+              f'last completed: {cfg.get("completed", "-")}')
         return 0
     print(__doc__)
     return 2

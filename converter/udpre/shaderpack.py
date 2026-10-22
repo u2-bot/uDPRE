@@ -34,12 +34,29 @@ class ShaderPack:
             raise ConvertError(f'shader pack {path}: version {d.get("version")}, this converter reads {PACK_VERSION}')
         self.entries = d['entries']           # {(container, name): entry}
         self.info = d.get('info', {})
+        self._by_name = None
 
     def get(self, container, name):
         e = self.entries.get((container, name))
         if e is None:
             raise ConvertError(f'no Windows build of shader "{name}" for {container} in the shader pack')
         return e
+
+    def find(self, container, name):
+        """-> (entry, exact). A bundle the pack was not made for (a mod's) that embeds a copy of a game shader gets the build
+        of that shader in Dpr/shaders, else in resources.assets, else in the first container holding it: the shaders bundle
+        is built with every variant the game's materials use."""
+        e = self.entries.get((container, name))
+        if e is not None:
+            return e, True
+        if self._by_name is None:
+            self._by_name = {}
+            for (c, n) in sorted(self.entries, key=lambda k: (k[0] != 'Dpr/shaders', k[0] != 'resources.assets', k[0])):
+                self._by_name.setdefault(n, self.entries[(c, n)])
+        e = self._by_name.get(name)
+        if e is None:
+            raise ConvertError(f'no Windows build of shader "{name}" for {container} in the shader pack')
+        return e, False
 
     def container_digests(self):
         """{container: digest of every shader the pack holds for it} - a container whose digest changes between two
@@ -96,6 +113,9 @@ def apply(obj, sf, entry, switch_shader_ids, cache):
         if k == 'builtin':
             fid = external_index(sf, r['ident']['path']) or add_external(sf, r['ident'])
             return {'m_FileID': fid, 'm_PathID': r['pid']}
+        if k == 'local' and r['type'] == 'Shader' and local_names(sf, cache).get(('Shader', r['name'])) is None \
+                and r['name'] in switch_shader_ids:
+            k = 'shaders'           # a Dpr/shaders entry used by name in another bundle: its sibling lives in Dpr/shaders
         if k == 'shaders':
             if r['name'] not in switch_shader_ids:
                 raise ConvertError(f'shader {entry["name"]}: dependency "{r["name"]}" is not in the dump\'s shaders bundle')

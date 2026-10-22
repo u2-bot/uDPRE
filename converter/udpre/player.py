@@ -1,4 +1,4 @@
-"""The player's own data files that come from the dump.
+"""The player's own data files that come from the dump (or from a mod that changes them).
 
 resources.assets (+ .resS): the dump's file converted like a bundle (platform, textures, shaders) plus one rule:
   StartupSettings names five boot methods by assembly-qualified type, three of them in assembly "AssetAssistant"; our build
@@ -60,11 +60,12 @@ def rewrite_strings(raw, old, new):
     return bytes(out), n
 
 
-def convert_resources(dump_data, out_data, pack, switch_shader_ids):
-    """dump_data = romfs/Data; out_data = the player's Dpr_Data. Writes resources.assets + resources.assets.resS."""
-    src = os.path.join(dump_data, 'resources.assets')
+def convert_resources(src, res_src, out_data, pack, switch_shader_ids):
+    """src / res_src = the Switch resources.assets and resources.assets.resS (the dump's, or a mod's - Luminescent ships its
+    own resources.assets and streams from the dump's .resS); out_data = the player's Dpr_Data. Writes resources.assets +
+    resources.assets.resS."""
     res_name = 'resources.assets.resS'
-    with open(os.path.join(dump_data, res_name), 'rb') as f:
+    with open(res_src, 'rb') as f:
         sources = {res_name: f.read()}
     env = UnityPy.load(src)
     sf = env.file
@@ -86,7 +87,11 @@ def convert_resources(dump_data, out_data, pack, switch_shader_ids):
                 return True
         return False
 
-    new_res = bundle.convert_serialized(sf, sources, res_name, 'resources.assets', pack, switch_shader_ids, stats, rules)
+    # a mod's resources.assets over the dump's .resS (Luminescent moved three loading icons inline) leaves .resS ranges no
+    # object of it reads: the whole-stream check holds only when both files come from the same place
+    same = os.path.dirname(os.path.abspath(src)) == os.path.dirname(os.path.abspath(res_src))
+    new_res = bundle.convert_serialized(sf, sources, res_name, 'resources.assets', pack, switch_shader_ids, stats, rules,
+                                        strict_streams=same)
     if not stats['startup_strings']:
         raise ConvertError('resources.assets has no StartupSettings')
     data = sf.save()
@@ -96,9 +101,10 @@ def convert_resources(dump_data, out_data, pack, switch_shader_ids):
     return stats
 
 
-def patch_globalgamemanagers(dump_data, base_file, out_data):
-    """Our globalgamemanagers (base_file) with the dump's ResourceManager object -> out_data/globalgamemanagers."""
-    sw = UnityPy.load(os.path.join(dump_data, 'globalgamemanagers')).file
+def patch_globalgamemanagers(sw_file, base_file, out_data):
+    """Our globalgamemanagers (base_file) with the ResourceManager object of the Switch globalgamemanagers sw_file (the dump's,
+    or a mod's) -> out_data/globalgamemanagers."""
+    sw = UnityPy.load(sw_file).file
     ours = UnityPy.load(base_file).file
     if [e.path for e in sw.externals] != [e.path for e in ours.externals]:
         raise ConvertError(f'globalgamemanagers externals differ: {[e.path for e in sw.externals]} vs '

@@ -13,6 +13,30 @@ class ConvertError(ValueError):
     pass
 
 
+def _tolerant_assetbundle_header():
+    """UnityPy reads every bundle's AssetBundle object while opening it and refuses one longer than its type tree. Unity
+    reads the fields and ignores the rest: Luminescent's Dpr/field/camera/chapter111 carries 72 such bytes (456 vs 384) and
+    loads on the console. Only that object type is read leniently; nothing is written back, the object keeps its bytes."""
+    from UnityPy.enums import ClassIDType
+    from UnityPy.files.ObjectReader import ObjectReader
+    orig = ObjectReader.parse_as_object
+    if getattr(orig, '_udpre', False):
+        return
+
+    def parse_as_object(self, node=None, check_read=True):
+        try:
+            return orig(self, node, check_read)
+        except ValueError:
+            if check_read and self.type == ClassIDType.AssetBundle:
+                return orig(self, node, False)
+            raise
+    parse_as_object._udpre = True
+    ObjectReader.parse_as_object = parse_as_object
+
+
+_tolerant_assetbundle_header()
+
+
 class StreamFile:
     """A new .resS: chunks 16-byte aligned (as Unity writes them)."""
 

@@ -22,8 +22,33 @@ STREAM_TYPES = ('Mesh',)
 UNHANDLED_STREAM_TYPES = ('AudioClip', 'VideoClip', 'Texture2DArray', 'Texture3D', 'SparseTexture', 'CubemapArray')
 
 
+def read_tree(obj, stats):
+    """-> (typetree, tail). Meshes Luminescent rebuilt end with 4 zero bytes their type tree does not describe (Unity reads
+    the fields and ignores them; UnityPy refuses the object). Such an object is read without UnityPy's length check when its
+    bytes are exactly the re-written tree + at most 16 zero bytes; the tail is kept if the object is written back
+    (save_tree). Anything else stops the conversion."""
+    try:
+        return obj.read_typetree(), b''
+    except ValueError:
+        raw = obj.get_raw_data()
+        tree = obj.read_typetree(check_read=False)
+        body = obj.save_typetree(tree)          # get_raw_data always returns the bytes as read, never the saved ones
+        obj.set_raw_data(raw)
+        tail = raw[len(body):]
+        if not raw.startswith(body) or len(tail) > 16 or any(tail):
+            raise
+        stats['zero_tails'] = stats.get('zero_tails', 0) + 1
+        return tree, tail
+
+
+def save_tree(obj, tree, tail):
+    data = obj.save_typetree(tree)
+    if tail:
+        obj.set_raw_data(data + tail)
+
+
 def convert_texture(obj, streams, out_stream, stats):
-    tree = obj.read_typetree()
+    tree, tail = read_tree(obj, stats)
     sd = tree.get('m_StreamData') or {}
     data = streams.read(sd) if sd.get('size') else bytes(tree.get('image data', b'') or b'')
     images = tree.get('m_ImageCount', 1) or 1
@@ -35,10 +60,10 @@ def convert_texture(obj, streams, out_stream, stats):
         if sd.get('size'):
             tree['m_StreamData'] = dict(sd, offset=out_stream.add(new), size=len(new))
             tree['m_PlatformBlob'] = []
-            obj.save_typetree(tree)
+            save_tree(obj, tree, tail)
         elif tree.get('m_PlatformBlob'):
             tree['m_PlatformBlob'] = []
-            obj.save_typetree(tree)
+            save_tree(obj, tree, tail)
         return
     tree['m_TextureFormat'] = fmt
     tree['m_CompleteImageSize'] = len(new) // images
@@ -48,22 +73,23 @@ def convert_texture(obj, streams, out_stream, stats):
         tree['m_StreamData'] = dict(sd, offset=out_stream.add(new), size=len(new))
     else:
         tree['image data'] = new
-    obj.save_typetree(tree)
+    save_tree(obj, tree, tail)
 
 
 def convert_stream_object(obj, streams, out_stream, stats):
-    tree = obj.read_typetree()
+    tree, tail = read_tree(obj, stats)
     sd = tree.get('m_StreamData') or {}
     if sd.get('size'):
         data = streams.read(sd)
         tree['m_StreamData'] = dict(sd, offset=out_stream.add(data), size=len(data))
-        obj.save_typetree(tree)
+        save_tree(obj, tree, tail)
         stats['streams'] = stats.get('streams', 0) + 1
 
 
-def convert_serialized(sf, sources, own_res, container, pack, switch_shader_ids, stats, extra=None):
+def convert_serialized(sf, sources, own_res, container, pack, switch_shader_ids, stats, extra=None, strict_streams=True):
     """Converts one SerializedFile in place. sources = {stream entry name: bytes}; own_res = the name of its .resS.
-    extra(obj) -> True when it handled obj (player-file rules). -> {stream entry name: new bytes}."""
+    extra(obj) -> True when it handled obj (player-file rules). strict_streams: every byte of the sources must be read by
+    some object (proof nothing was dropped). -> {stream entry name: new bytes}."""
     set_windows(sf)
     streams = StreamSource(sources)
     out = StreamFile()
@@ -78,11 +104,14 @@ def convert_serialized(sf, sources, own_res, container, pack, switch_shader_ids,
             convert_stream_object(obj, streams, out, stats)
         elif t == 'Shader':
             name = shaderpack.shader_name(obj)
-            shaderpack.apply(obj, sf, pack.get(container, name), switch_shader_ids, cache)
+            entry, exact = pack.find(container, name)
+            shaderpack.apply(obj, sf, entry, switch_shader_ids, cache)
             stats['shaders'] = stats.get('shaders', 0) + 1
+            if not exact:
+                stats['shaders_by_name'] = stats.get('shaders_by_name', 0) + 1
         elif t in UNHANDLED_STREAM_TYPES:
             raise ConvertError(f'{container}: {t} objects are not handled yet')
-    gaps = streams.uncovered()
+    gaps = streams.uncovered() if strict_streams else None
     if gaps:
         raise ConvertError(f'{container}: stream data no converted object accounts for: {gaps}')
     res = {}
@@ -91,8 +120,11 @@ def convert_serialized(sf, sources, own_res, container, pack, switch_shader_ids,
     return res
 
 
-def convert_bundle(src, dst, container, pack, switch_shader_ids):
-    """src: Switch bundle path; dst: output path; container: bundle path under AssetAssistant ('Dpr/shaders')."""
+def convert_bundle(src, dst, container, pack, switch_shader_ids, strict_streams=True):
+    """src: Switch bundle path; dst: output path; container: bundle path under AssetAssistant ('Dpr/shaders').
+    strict_streams: every .resS byte must belong to an object (the dump's bundles). Mod tools that replace a texture leave the
+    old data in the .resS with nothing pointing at it (58 of Luminescent's bundles, the translation mods' logos): a mod's
+    bundle is converted with strict_streams=False, and the unreferenced bytes are not carried over."""
     env = UnityPy.load(src)
     bf = env.file
     entries = dict(bf.files)
@@ -108,7 +140,8 @@ def convert_bundle(src, dst, container, pack, switch_shader_ids):
     new_streams = {}
     for name, sf in sfs:
         mine = {n: b for n, b in sources.items() if n == name + '.resS'}
-        new_streams.update(convert_serialized(sf, mine, name + '.resS', container, pack, switch_shader_ids, stats))
+        new_streams.update(convert_serialized(sf, mine, name + '.resS', container, pack, switch_shader_ids, stats,
+                                              strict_streams=strict_streams))
     leftover = set(sources) - set(new_streams)
     if leftover:
         raise ConvertError(f'{container}: stream entries without their serialized file: {sorted(leftover)}')

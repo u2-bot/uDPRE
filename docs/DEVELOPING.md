@@ -104,10 +104,62 @@ players unzip it over their folder (see Updates above).
 - Time: 58-68 s with 15-16 workers on a 16-core desktop, about 10 minutes on one core.
 - RAM: one worker peaks at 1.26 GB; `default_workers` budgets 1.5 GB of free RAM per worker.
 
+## Mod packs
+
+**Why a PC patch cannot go on a uDPRE folder.** A converted bundle keeps its Switch path IDs; bundles of a Windows build of
+the project carry the IDs Unity gave them. Same CAB names, different object IDs: every reference from one set into the
+other dangles. Measured on `Dpr/shaders`: 63 of 63 shaders have other IDs. Copying a PC Luminescent patch over a uDPRE folder
+leaves 31,623 of the 45,169 material shader references pointing at nothing (`release/check_refs.py --shaders`), and the
+game draws those materials pink. So mods go through the converter in Switch form, with the dump.
+
+**A pack** is a folder in `mods/` with `udpre_mod.json` (format 1, read by `converter/udpre/mods.py`):
+
+| key | meaning |
+|---|---|
+| `id`, `name`, `version`, `description` | shown in the window; `id` is what `--mods` and the other packs name |
+| `order` | layer position, higher = on top (Luminescent 10, Easy-Mode 20, Dechibified 30, No Balance 40, FR / Castellano / Latam / IT 50, PT-BR 60) |
+| `requires`, `conflicts` | ids; the window turns required packs on and conflicting ones off |
+| `layers` | `{"romfs": DIR}` = Switch files with their `romfs/Data` paths, converted like the dump; `{"files": DIR}` = Windows files with their `Dpr_Data` paths, copied (hard-linked when the drive allows). Optional `when` / `unless` (ids) choose variants (the Dechibified version of a translation ...); later layers of a pack win. Optional `dump` = `{romfs path: dump path}`: a mod file byte-identical to another dump file is taken from the dump instead of shipped |
+| `player` | folder of a player profile: `profile.json` (`id`, `files`), the code files at their root-relative paths (`GameAssembly.dll`, `global-metadata.dat`, `app.info`, the renumbered `globalgamemanagers.assets`), `udpre/base/globalgamemanagers`, `udpre/shaders.pack` |
+
+**What the converter does with packs** (`install.run`, `mods.Stack`): every `Dpr_Data` path gets the top-most source of the
+stack dump -> enabled packs' active layers. Bundles are converted from that source (strict whole-stream proof only for the
+dump: mod tools leave replaced texture data in a `.resS` with nothing pointing at it), Windows files are copied,
+`resources.assets` / `.resS` / the `ResourceManager` of `globalgamemanagers` / `Dpr.bin` / audio / movies come from their
+top-most layer. The top-most pack with a player puts its code files over ours; ours wait in `udpre/players/vanilla` (by the
+hashes in `udpre/player_files.json`) and come back when no such pack is on. The done log keeps each bundle's source key (pack
+id + version + size + time, or `dump`): changing the mods converts only the bundles whose source changed and removes the
+ones no layer has any more; `state/copied.json` does the same for copied files.
+
+Two Luminescent quirks the converter accepts, both proven safe: an AssetBundle object longer than its type tree (72 bytes,
+`chapter111`; read leniently, never written) and meshes ending in 4 zero bytes the type tree does not describe (read when
+the object equals the re-written tree + at most 16 zero bytes; the tail is kept). A mod bundle that embeds a game shader the
+pack was not built for gets that shader's build from `Dpr/shaders` (`ShaderPack.find`).
+
+**Making a pack** (build machine): `release/make_pack.py SPEC.json OUT_DIR --dump DUMP/romfs/Data [--census ...]`. The spec
+names each layer's sources (folders with include / exclude globs, or single files) and, for a code mod, the Windows player
+built with it (profile = its code files + `make_player_base.py` + `make_shaderpack.py --overlay <the mod's romfs/Data>`).
+Layer files are hard links. A romfs file byte-identical to the dump's at the same path is left out, and one identical to
+another dump file goes into the `dump` map. The audit fails on any file with the bytes of a dump file, or a player file
+naming a build-machine folder. Our fixes to a mod are applied to its Switch files (typetree edits, RGBA32 texture writes),
+never by taking a bundle out of a Windows build. Windows bundles are allowed only where no Switch form exists (the
+Dechibified wardrobe), with every shader reference already rebased to the Switch IDs.
+
+**Checks for a pack:**
+1. convert the dump + the pack into a test folder;
+2. `release/verify_bundle.py MOD_ROMFS_AA OUT_AA --list <the pack's bundles>`: every object against its Switch source;
+3. `release/check_refs.py OUT_AA --full <the pack's bundles>`: every material shader reference in the whole folder resolves,
+   and every reference of the pack's bundles. Run the same on a hard-linked tree of the Switch files (dump + the pack's romfs):
+   the dangling references must be the same set (the mod's own);
+4. switch mods on and off (`convert --mods ...`, `--mods none`): only the touched files are redone, and the no-mod state is
+   the plain conversion again (`verify_bundle.py` over every bundle against the dump, player files = the release's).
+
+Measured (Luminescent 2.2F): 14,685 bundles; 3,135 Luminescent bundles verify object by object; 45,169 material shader
+references, 0 dangling; 2,230 dangling references in Luminescent's bundles, the same set on the Switch files (the mod's own:
+e.g. the corrupt `pm0487_12_00` it ships, left out of the pack so the dump's file serves the record).
+
 ## Open items
 
 - Shining Pearl dumps: fingerprints and an SP player are not done.
-- Mods (Luminescent Platinum and its add-ons): the converter handles Switch bundles generally, so a mod's romfs could go
-  through the same path with a mod-built player. Not wired up yet.
 - A compact texture option (BC7 instead of RGBA32 for colour maps) for GPUs with little video memory.
 - Auto-update (a signed manifest on the Releases page, checked at start) - not planned for now.
