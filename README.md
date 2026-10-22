@@ -30,6 +30,25 @@ Mods support incoming.
 After that, start **Dpr.exe** (or uDPRE.exe, then Play) whenever you want to play. Your dump is only read; uDPRE never
 changes it. Keep it: a later uDPRE update may need to convert again.
 
+## Updates
+
+1. Download the new release from the Releases page.
+2. Unzip it **over your uDPRE folder** and let it overwrite the files.
+3. Start **uDPRE.exe** once. It sees what the update changed and makes only those files again from the dump you used last
+   time - usually a few seconds; an update that changes the conversion itself converts everything again (about the same
+   time as the first run). Then press Play.
+
+Start uDPRE.exe (not Dpr.exe) the first time after an update. If you moved or deleted the dump, uDPRE asks for it again.
+Saves are not stored in the uDPRE folder, so they always carry over. To be told about new releases, use Watch > Custom >
+Releases on the repository page.
+
+## Saves and settings
+
+- Saves: `%USERPROFILE%\AppData\LocalLow\DefaultCompany\Dpr\` (shared with uDPR builds of the game); with the
+  Luminescent pack: `%USERPROFILE%\AppData\LocalLow\DefaultCompanyLumi\`
+- Settings: `pc_settings.ini` in the same folder, and the in-game Options menu (resolution, frame rate, V-Sync, keyboard and
+  controller buttons, fast-forward)
+
 ## Mods
 
 uDPRE converts mods together with your dump, so Luminescent Platinum and its add-ons work on a uDPRE folder.
@@ -72,25 +91,6 @@ mod's own page.
 **Note:** you still need the original Luminescent Platinum 2.2F mod from Team Luminescent (Team Lumi), even if you already
 have the mod packs. The Luminescent pack holds only the PC version of the mod's game code; its game data comes from your own
 Luminescent download (see step 2 under Mods).
-
-## Updates
-
-1. Download the new release from the Releases page.
-2. Unzip it **over your uDPRE folder** and let it overwrite the files.
-3. Start **uDPRE.exe** once. It sees what the update changed and makes only those files again from the dump you used last
-   time - usually a few seconds; an update that changes the conversion itself converts everything again (about the same
-   time as the first run). Then press Play.
-
-Start uDPRE.exe (not Dpr.exe) the first time after an update. If you moved or deleted the dump, uDPRE asks for it again.
-Saves are not stored in the uDPRE folder, so they always carry over. To be told about new releases, use Watch > Custom >
-Releases on the repository page.
-
-## Saves and settings
-
-- Saves: `%USERPROFILE%\AppData\LocalLow\DefaultCompany\Dpr\` (shared with uDPR builds of the game); with the
-  Luminescent pack: `%USERPROFILE%\AppData\LocalLow\DefaultCompanyLumi\`
-- Settings: `pc_settings.ini` in the same folder, and the in-game Options menu (resolution, frame rate, V-Sync, keyboard and
-  controller buttons, fast-forward)
 
 ## When something goes wrong
 
