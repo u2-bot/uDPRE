@@ -14,6 +14,7 @@ References inside an entry (m_Dependencies) are stored by meaning, not by ID, an
   local    - an object of the same file, by type + name.
 """
 import copy
+import hashlib
 import pickle
 import zlib
 
@@ -39,6 +40,20 @@ class ShaderPack:
         if e is None:
             raise ConvertError(f'no Windows build of shader "{name}" for {container} in the shader pack')
         return e
+
+    def container_digests(self):
+        """{container: digest of every shader the pack holds for it} - a container whose digest changes between two
+        releases must be converted again (its Shader objects carry the pack's data)."""
+        per = {}
+        for (container, name), e in sorted(self.entries.items()):
+            per.setdefault(container, hashlib.sha1()).update(name.encode() + b'\0' + entry_digest(e).encode())
+        return {c: h.hexdigest() for c, h in per.items()}
+
+
+def entry_digest(e):
+    if 'digest' not in e:
+        e['digest'] = hashlib.sha1(pickle.dumps((e['tree'], e['refs'], e.get('type_hash')), protocol=4)).hexdigest()
+    return e['digest']
 
 
 def shader_name(obj):

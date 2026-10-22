@@ -1,8 +1,9 @@
 """uDPRE entry point.
 
   uDPRE.exe                         window: pick the dump once, convert, play (gui.py)
-  uDPRE.exe convert DUMP [--workers N] [--root DIR]   console conversion
-  uDPRE.exe status [--root DIR]
+  uDPRE.exe convert [DUMP] [--workers N] [--root DIR]   console conversion (no DUMP = the dump of the last conversion;
+                                                        after an update it makes only what the update needs)
+  uDPRE.exe status [--root DIR]                         ready / refresh needed / not converted
 Without --root the uDPRE folder is the one holding the executable (frozen) or the current folder.
 """
 import os
@@ -50,9 +51,6 @@ def main(argv=None):
     cmd = args.pop(0)
     from . import install
     if cmd == 'convert':
-        if not args:
-            print(__doc__)
-            return 2
         last = {}
 
         def progress(stage, done, total):
@@ -61,7 +59,8 @@ def main(argv=None):
                 last[stage] = k
                 print(f'{stage}: {done}/{total}', flush=True)
         try:
-            r = install.run(root, args[0], int(workers) if workers else None, progress, lambda s: print(s, flush=True))
+            r = install.run(root, args[0] if args else None, int(workers) if workers else None, progress,
+                            lambda s: print(s, flush=True))
         except (install.DumpError, install.ConvertError) as e:
             print(f'PROBLEM: {e}')
             return 1
@@ -69,7 +68,12 @@ def main(argv=None):
         return 0
     if cmd == 'status':
         p = install.Paths(root)
-        print({'installed': install.is_installed(p), 'config': install.load_config(p)})
+        st = install.status(p)
+        cfg = install.load_config(p)
+        print(f'state: {st["state"]}' + (f' ({st["reason"]})' if st['reason'] else ''))
+        if st['stale']:
+            print(f'bundles to convert again: {", ".join(st["stale"])}')
+        print(f'dump: {cfg.get("dump", "-")}\nlast completed: {cfg.get("completed", "-")}')
         return 0
     print(__doc__)
     return 2

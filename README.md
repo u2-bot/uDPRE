@@ -30,8 +30,15 @@ changes it. Keep it: a later uDPRE update may need to convert again.
 
 ## Updates
 
-Unzip a new release into a new folder and start uDPRE.exe there, or unzip it over your current folder. uDPRE converts
-again only when the new release needs it. Saves are not stored in the uDPRE folder, so they carry over.
+1. Download the new release from the Releases page.
+2. Unzip it **over your uDPRE folder** and let it overwrite the files.
+3. Start **uDPRE.exe** once. It sees what the update changed and makes only those files again from the dump you used last
+   time - usually a few seconds; an update that changes the conversion itself converts everything again (about the same
+   time as the first run). Then press Play.
+
+Start uDPRE.exe (not Dpr.exe) the first time after an update. If you moved or deleted the dump, uDPRE asks for it again.
+Saves are not stored in the uDPRE folder, so they always carry over. To be told about new releases, use Watch > Custom >
+Releases on the repository page.
 
 ## Saves and settings
 
@@ -45,8 +52,8 @@ uDPRE says what it needs in plain words (wrong game version, missing files, not 
 prompt shows the full log:
 
 ```
-uDPRE.exe convert "D:\Dumps\BDSP"
-uDPRE.exe status
+uDPRE.exe convert "D:\Dumps\BDSP"     (later: uDPRE.exe convert - uses the same dump again)
+uDPRE.exe status                      (ready / update refresh needed / not converted)
 ```
 
 The conversion log of the last run is in `udpre\state\`. When reporting a problem, include `udpre\state\errors.txt` (if there
@@ -67,3 +74,8 @@ Nintendo, Creatures and Game Freak.
 ## Building
 
 See [docs/DEVELOPING.md](docs/DEVELOPING.md).
+
+## License
+
+uDPRE's code: MIT (`LICENSE`). Components by others that ship in a release (Unity runtime, Wwise runtime, Python and its
+packages): see `THIRD-PARTY-NOTICES.md`.

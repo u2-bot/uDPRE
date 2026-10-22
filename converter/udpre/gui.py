@@ -47,17 +47,31 @@ class App:
         self.play_btn.pack(side='right', padx=(0, 8))
         self.refresh()
         self.win.after(100, self.poll)
+        if self.state == 'refresh' and self.dump_var.get():
+            self.win.after(400, self.start)       # after an update: refresh on its own, the player only presses Play
 
     def refresh(self):
-        done = install.is_installed(self.paths)
-        if done:
+        try:
+            st = install.status(self.paths)
+        except Exception as e:      # a damaged release folder: say so instead of failing to open
+            st = {'state': 'convert', 'stale': [], 'reason': f'{type(e).__name__}: {e}'}
+        self.state = st['state']
+        if st['state'] == 'ready':
             self.head.config(text='Ready to play')
             self.info.config(text='Your game data is converted. Press Play (or start Dpr.exe yourself). Convert again only '
-                                  'after a uDPRE update asks for it, or to use another dump.')
+                                  'to use another dump.')
             self.play_btn.state(['!disabled'])
             self.go.config(text='Convert again')
+        elif st['state'] == 'refresh':
+            self.head.config(text='Updating your game data')
+            self.info.config(text=f'This uDPRE update changed {st["reason"]}. uDPRE makes only the files it needs again, '
+                                  f'from the dump you used last time - usually a few seconds. Then press Play.')
+            self.play_btn.state(['disabled'])
+            self.go.config(text='Update')
         else:
-            self.head.config(text='Convert your Brilliant Diamond dump')
+            again = st['reason'].startswith('this uDPRE version')
+            self.head.config(text='This update converts your game data again' if again else
+                             'Convert your Brilliant Diamond dump')
             self.info.config(text='Pick the folder of your own Pokemon Brilliant Diamond dump with the v1.3.0 update '
                                   'applied (the folder that holds "romfs"). uDPRE converts it into this folder; the dump '
                                   'itself is only read. Needs about 7 GB of free space here.')

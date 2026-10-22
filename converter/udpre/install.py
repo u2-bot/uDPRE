@@ -7,6 +7,10 @@ shaders.pack, bundles.txt, base/globalgamemanagers, release.json). The converter
   StreamingAssets/AssetAssistant/Dpr.bin, Audio/, Movie/   copied byte for byte (the game reads them as they are).
 State: udpre/state/done_v<CONVERT_VERSION>.log lists finished bundles; a new converter version (other output bytes) starts a
 new log, so every bundle is converted again; outputs are always written to a .part file and renamed when complete.
+Updates without a new converter version: state/config.json keeps a fingerprint of what the data was made against (our base
+globalgamemanagers, the shader pack per container). A release unzipped over the folder that changes either is noticed at
+start (status() == 'refresh'): the player files and only the bundles whose shaders changed are made again, from the dump
+used last time.
 """
 import concurrent.futures as cf
 import hashlib
@@ -123,8 +127,59 @@ def save_config(p, cfg):
 
 
 def is_installed(p):
+    return status(p)['state'] == 'ready'
+
+
+def pack_digests(p):
+    """{container: digest} of the release's shader pack, cached in state/ by the pack file's size + mtime."""
+    st = os.stat(p.pack)
+    key = f'{st.st_size}:{int(st.st_mtime)}'
+    cache = os.path.join(p.state, 'pack_digests.json')
+    try:
+        with open(cache, encoding='utf-8') as f:
+            d = json.load(f)
+        if d.get('key') == key:
+            return d['digests']
+    except (OSError, ValueError):
+        pass
+    from .shaderpack import ShaderPack
+    digests = ShaderPack(p.pack).container_digests()
+    os.makedirs(p.state, exist_ok=True)
+    with open(cache, 'w', encoding='utf-8') as f:
+        json.dump({'key': key, 'digests': digests}, f)
+    return digests
+
+
+def fingerprint(p):
+    """What the converted data was made against: our base globalgamemanagers + the shader pack, per container."""
+    return {'base_ggm': sha1(p.base_ggm), 'pack': pack_digests(p)}
+
+
+def status(p):
+    """-> {'state': 'ready' | 'refresh' | 'convert', 'stale': [containers to convert again], 'reason': text}.
+    convert = no complete conversion for this CONVERT_VERSION; refresh = a release changed our player base or shaders since
+    the conversion (or converted files are missing): only the affected files are made again."""
     cfg = load_config(p)
-    return cfg.get('complete_version') == CONVERT_VERSION
+    if cfg.get('complete_version') != CONVERT_VERSION:
+        if cfg.get('complete_version') is not None:
+            return {'state': 'convert', 'stale': [], 'reason': 'this uDPRE version converts the game data in a new way'}
+        return {'state': 'convert', 'stale': [], 'reason': 'not converted yet'}
+    old, now = cfg.get('fingerprint') or {}, fingerprint(p)
+    stale = sorted(c for c, d in now['pack'].items() if (old.get('pack') or {}).get(c) != d)
+    reasons = []
+    if stale:
+        reasons.append(f'new shaders for {len(stale)} files')
+    if old.get('base_ggm') != now['base_ggm']:
+        reasons.append('a new player')
+    missing = [x for x in ('globalgamemanagers', 'resources.assets') if not os.path.isfile(os.path.join(p.out, x))]
+    if missing:
+        reasons.append('missing ' + ', '.join(missing))
+    gone = sum(1 for b in p.bundle_list() if not os.path.isfile(os.path.join(p.aa_out, *b.split('/'))))
+    if gone:
+        reasons.append(f'{gone} converted bundles missing')
+    if reasons:
+        return {'state': 'refresh', 'stale': stale, 'reason': '; '.join(reasons)}
+    return {'state': 'ready', 'stale': [], 'reason': ''}
 
 
 def done_set(p):
@@ -197,24 +252,35 @@ def copy_tree(src, dst, progress=None):
     return n
 
 
-def run(root, dump_selected, workers=None, progress=print, log=print):
-    """Converts the dump into the uDPRE folder `root`. progress(stage, done, total) / log(text). Returns a summary dict;
-    raises DumpError / ConvertError."""
+def run(root, dump_selected=None, workers=None, progress=print, log=print):
+    """Converts the dump into the uDPRE folder `root` - everything on a first run, after a release update only what it needs
+    (status()). dump_selected None = the dump of the last conversion. progress(stage, done, total) / log(text). Returns a
+    summary dict; raises DumpError / ConvertError."""
     p = Paths(root)
+    cfg = load_config(p)
+    if dump_selected is None:
+        dump_selected = cfg.get('dump')
+        if not dump_selected:
+            raise DumpError('Pick your dump folder first.')
+        if not os.path.isdir(dump_selected):
+            raise DumpError(f'The dump used last time is gone ({dump_selected}). Pick your dump folder again.')
     data = find_dump(dump_selected)
     bundles = p.bundle_list()
     log(f'dump: {data}')
     problems = verify_dump(data, bundles)
     if problems:
         raise DumpError('\n'.join(problems))
-    cfg = load_config(p)
+    st0 = status(p)
+    stale = set(st0['stale'])
+    if st0['state'] == 'refresh':
+        log(f'refresh after an update: {st0["reason"]}')
     cfg.update({'dump': data, 'started_version': CONVERT_VERSION})
     cfg.pop('complete_version', None)
     save_config(p, cfg)
     workers = workers or default_workers()
     aa = os.path.join(data, 'StreamingAssets', 'AssetAssistant')
     done = done_set(p)
-    todo = [b for b in bundles if b not in done or not os.path.isfile(os.path.join(p.aa_out, *b.split('/')))]
+    todo = [b for b in bundles if b not in done or b in stale or not os.path.isfile(os.path.join(p.aa_out, *b.split('/')))]
     todo.sort(key=lambda b: -os.path.getsize(os.path.join(aa, *b.split('/'))))     # big first: even load at the end
     log(f'{len(bundles)} bundles, {len(bundles) - len(todo)} already converted, {len(todo)} to go, {workers} workers')
     need = int(sum(os.path.getsize(os.path.join(aa, *b.split('/'))) for b in todo) * BUNDLE_GROWTH)
@@ -273,5 +339,6 @@ def run(root, dump_selected, workers=None, progress=print, log=print):
     log(f'copied {copied} audio / movie files')
     cfg['complete_version'] = CONVERT_VERSION
     cfg['completed'] = time.strftime('%Y-%m-%d %H:%M:%S')
+    cfg['fingerprint'] = fingerprint(p)
     save_config(p, cfg)
     return {'seconds': round(time.time() - t0), 'bundles': len(bundles), 'totals': totals}

@@ -41,8 +41,21 @@ What the release side prepares so the dump's files fit our player (`release/make
   MonoManager and GraphicsSettings follow the new IDs.
 - **ScriptMapper** (Shader.Find's table) is pointed at the Switch resources.assets shaders by name.
 
-Rule: bump `CONVERT_VERSION` in `converter/udpre/__init__.py` whenever a change alters the bytes the converter writes.
-Installed folders then convert everything again.
+## Updates (players unzip a new release over their folder)
+
+uDPRE has no auto-update. At the end of each conversion `udpre/state/config.json` records a fingerprint: the hash of
+`udpre/base/globalgamemanagers` and a digest per container of `udpre/shaders.pack`. At every start `install.status()`
+compares it with the files now in the folder:
+
+| Change in the release | What uDPRE does at the next start |
+|---|---|
+| Player only (new `GameAssembly.dll`, registry, base globalgamemanagers) | remakes resources.assets + globalgamemanagers (seconds) |
+| A shader in the pack | also converts again the bundles whose shaders changed (the pack has 8 bundle containers) |
+| `CONVERT_VERSION` bumped | converts every bundle again (a new `done_v<N>.log`) |
+
+The window starts that refresh on its own with the dump of the last conversion, so after an update the player presses
+only Play. Rule: bump `CONVERT_VERSION` in `converter/udpre/__init__.py` whenever a change alters the bytes the converter
+writes for bundles.
 
 ## Making a release
 
@@ -55,8 +68,9 @@ py -3.13 -I release/build_exe.py                         # -> build/dist/uDPRE (
 py -3.13 -I release/make_release.py PLAYER_DIR DUMP/romfs/Data OUT_DIR --exe build/dist/uDPRE
 ```
 
-`make_release.py` copies the player without its game data, builds the player base and the shader pack, writes
-`udpre/release.json`, and runs the **audit**. The audit fails the release when any file has the bytes of a dump file (Unity's
+`make_release.py` copies the player without its game data, builds the player base and the shader pack, copies
+`LICENSE`, `THIRD-PARTY-NOTICES.md`, `README.md` and the license texts of every package in the converter runtime
+(`udpre/licenses/`), writes `udpre/release.json`, and runs the **audit**. The audit fails the release when any file has the bytes of a dump file (Unity's
 own `mscorlib.dll-resources.dat` is the one allowed match), or when a serialized file of ours holds textures, meshes,
 sounds, text, scripts' data or other game objects.
 
@@ -77,6 +91,12 @@ changes.
    - and whatever the release changed.
    Player.log should hold no errors beyond the expected missing-script line for Wwise's Switch settings object.
 
+## Publishing
+
+`py -3.13 -I release/zip_release.py OUT_DIR` makes `uDPRE-<version>-win64.zip` from a fresh `make_release.py` output (it
+refuses a folder that holds converted data or failed its audit). Attach the zip to a GitHub Release with a short changelog;
+players unzip it over their folder (see Updates above).
+
 ## Measurements (BD v1.3.0)
 
 - Bundles: 3.83 GiB in, 5.09 GiB out (13,774 textures decoded, 105 uncrunched, 27,061 copied, 70 shaders replaced).
@@ -90,3 +110,4 @@ changes.
 - Mods (Luminescent Platinum and its add-ons): the converter handles Switch bundles generally, so a mod's romfs could go
   through the same path with a mod-built player. Not wired up yet.
 - A compact texture option (BC7 instead of RGBA32 for colour maps) for GPUs with little video memory.
+- Auto-update (a signed manifest on the Releases page, checked at start) - not planned for now.

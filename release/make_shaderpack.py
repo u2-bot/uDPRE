@@ -135,6 +135,7 @@ def pack_file(path, container, pc_shader_names, entries, switch_path):
             if key in entries:
                 raise SystemExit(f'{container}: two shaders named {name}')
             entries[key] = {'name': name, 'tree': tree, 'refs': refs, 'type_hash': type_hash(o)}
+            shaderpack.entry_digest(entries[key])
 
 
 def main():

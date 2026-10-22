@@ -81,6 +81,69 @@ def neutral_pdb_path(path):
     return None
 
 
+def pyz_top_modules(exe):
+    """Top-level module names inside a PyInstaller executable's PYZ archive."""
+    import tempfile
+    from PyInstaller.archive.readers import CArchiveReader, ZlibArchiveReader
+    car = CArchiveReader(exe)
+    out = set()
+    for name in car.toc:
+        if name.lower().endswith('.pyz') or name.upper().startswith('PYZ'):
+            fd, tmp = tempfile.mkstemp(suffix='.pyz')
+            os.close(fd)
+            try:
+                with open(tmp, 'wb') as f:
+                    f.write(car.extract(name))
+                out |= {m.split('.')[0] for m in ZlibArchiveReader(tmp).toc}
+            finally:
+                os.remove(tmp)
+    return out
+
+
+def collect_licenses(runtime, dst):
+    """License texts of everything the frozen converter bundles -> dst/<distribution>/..., plus Python's LICENSE.txt (its
+    Windows build's libraries: OpenSSL, libffi, zlib, bzip2, xz, Tcl/Tk ...) and PyInstaller's COPYING.txt (bootloader).
+    Distributions = those owning a top-level module or package found in the runtime folder. -> number of distributions."""
+    import importlib.metadata as md
+    owners = md.packages_distributions()
+    mods = {entry.split('.')[0] for entry in os.listdir(runtime)}
+    mods |= pyz_top_modules(os.path.join(os.path.dirname(runtime), 'uDPRE.exe'))   # pure-Python packages live in the PYZ
+    names = set()
+    for mod in mods:
+        for dist in owners.get(mod, []):
+            names.add(dist)
+    names |= {'pyinstaller'}
+    os.makedirs(dst, exist_ok=True)
+    index = []
+    for name in sorted(names, key=str.lower):
+        try:
+            meta = md.metadata(name)
+            files = [f for f in (md.files(name) or []) if any(k in f.name.upper() for k in ('LICEN', 'COPYING', 'NOTICE'))]
+        except md.PackageNotFoundError:
+            continue
+        lic = (meta.get('License-Expression') or '').strip()
+        if not lic:
+            lic = '; '.join(c.split('::')[-1].strip() for c in meta.get_all('Classifier') or [] if c.startswith('License'))
+        if not lic:
+            lic = (meta.get('License') or '').strip().splitlines()[0] if meta.get('License') else 'see files'
+        d = os.path.join(dst, meta['Name'])
+        for f in files:
+            src = f.locate()
+            if os.path.isfile(src):
+                t = os.path.join(d, str(f).split('.dist-info/', 1)[-1].replace('/', '_'))
+                os.makedirs(d, exist_ok=True)
+                shutil.copyfile(src, t)
+        index.append(f'{meta["Name"]}\t{meta["Version"]}\t{lic}')
+    py = os.path.join(sys.base_prefix, 'LICENSE.txt')
+    if os.path.isfile(py):
+        os.makedirs(os.path.join(dst, 'Python'), exist_ok=True)
+        shutil.copyfile(py, os.path.join(dst, 'Python', 'LICENSE.txt'))
+        index.append(f'Python\t{sys.version.split()[0]}\tPSF-2.0 (+ the bundled libraries listed in its LICENSE.txt)')
+    with open(os.path.join(dst, 'index.txt'), 'w', encoding='utf-8', newline='\n') as f:
+        f.write('package\tversion\tlicense\n' + '\n'.join(index) + '\n')
+    return len(index)
+
+
 def run(args):
     print('>', ' '.join(args), flush=True)
     r = subprocess.run([sys.executable, '-I'] + args)
@@ -172,6 +235,10 @@ def main():
             os.makedirs(os.path.dirname(d), exist_ok=True)
             shutil.copyfile(os.path.join(exe, *rel.split('/')), d)
         info['exe'] = os.path.basename(os.path.abspath(exe))
+        n = collect_licenses(os.path.join(exe, 'udpre_runtime'), os.path.join(out, 'udpre', 'licenses'))
+        print(f'license texts collected: {n} packages')
+    for f in ('LICENSE', 'THIRD-PARTY-NOTICES.md', 'README.md'):
+        shutil.copyfile(os.path.join(REPO, f), os.path.join(out, f))
     with open(os.path.join(out, 'udpre', 'release.json'), 'w', encoding='utf-8') as f:
         json.dump(info, f, indent=1)
     files, problems = audit(out, switch_data, local_markers(player, switch_data, REPO))
