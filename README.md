@@ -69,6 +69,10 @@ uDPRE does not include any mod pack, and this page does not host them. Look for 
 already has them. Once a pack is in your `mods` folder, its line in the Mods box names the mod's author and links to the
 mod's own page.
 
+**Note:** you still need the original Luminescent Platinum 2.2F mod from Team Luminescent (Team Lumi), even if you already
+have the mod packs. The Luminescent pack holds only the PC version of the mod's game code; its game data comes from your own
+Luminescent download (see step 2 under Mods).
+
 ## Updates
 
 1. Download the new release from the Releases page.
