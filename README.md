@@ -6,6 +6,8 @@ uDPRE is the Windows player of the uDPR project (the game rebuilt as a native Un
 that turns **your own** game dump into the data that player reads. No Unity, no setup scripts, no game files downloaded:
 everything game-related comes from the dump you made, and stays on your PC.
 
+uDPRE is the successor to uDPR (https://github.com/Manurocker95/uDPR), including the latest features, bug fixes, and mods support.
+
 ## What you need
 
 - Windows 10 or 11, 64-bit, a DirectX 11 graphics card
