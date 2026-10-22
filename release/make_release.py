@@ -143,6 +143,14 @@ def collect_licenses(runtime, dst):
         os.makedirs(os.path.join(dst, 'Python'), exist_ok=True)
         shutil.copyfile(py, os.path.join(dst, 'Python', 'LICENSE.txt'))
         index.append(f'Python\t{sys.version.split()[0]}\tPSF-2.0 (+ the bundled libraries listed in its LICENSE.txt)')
+    if os.path.isdir(os.path.join(runtime, 'vpx')):
+        # libvpx + the winpthreads runtime it imports (build_exe.py; no package metadata of their own)
+        for sub, files in (('libvpx', ('libvpx-LICENSE.txt', 'libvpx-PATENTS.txt')), ('winpthreads', ('winpthreads-COPYING.txt',))):
+            os.makedirs(os.path.join(dst, sub), exist_ok=True)
+            for f in files:
+                shutil.copyfile(os.path.join(HERE, 'licenses', f), os.path.join(dst, sub, f.split('-', 1)[1]))
+        index.append('libvpx (udpre_runtime/vpx)\t1.17.0\tBSD-3-Clause + Google patent grant (PATENTS.txt)')
+        index.append('winpthreads (udpre_runtime/vpx, mingw-w64)\t-\tMIT')
     with open(os.path.join(dst, 'index.txt'), 'w', encoding='utf-8', newline='\n') as f:
         f.write('package\tversion\tlicense\n' + '\n'.join(index) + '\n')
     return len(index)

@@ -5,6 +5,12 @@ Put uDPRE mod packs here: one folder per pack, each holding a file named udpre_m
 (for example  mods\Luminescent\udpre_mod.json). Then open uDPRE.exe, tick the mods you want
 in the "Mods" box and press Convert (or Apply).
 
+Luminescent Platinum: the pack holds only the PC version of Luminescent's game code. Put your
+own download of Luminescent Platinum 2.2F for Brilliant Diamond here too: extract it with
+7-Zip and put the extracted folder (the one with "romfs" and "exefs" inside) into this mods
+folder. Or keep it where it is and press "Find a mod download..." in uDPRE.exe. uDPRE checks
+every file of it before converting.
+
 - uDPRE converts the mods together with your own dump, so they work with your converted game.
   Patches made for other PC builds (folders you copy over a game folder) do NOT work on a
   uDPRE folder - use the uDPRE pack of that mod instead.
@@ -14,6 +20,6 @@ in the "Mods" box and press Convert (or Apply).
 - Changing the mods later makes again only the files the change touches.
 - Luminescent keeps its saves apart from the unmodded game.
 
-A plain console mod (a folder with romfs/Data inside) can be put here too: uDPRE converts its
-files on top of everything else. Console mods that change the game code (they have an exefs
-folder) cannot be used this way.
+A plain console mod that only changes data (a folder with romfs/Data inside, no exefs) can be
+put here too: uDPRE converts its files on top of everything else. Console mods that change the
+game code (they have an exefs folder) need a uDPRE pack.

@@ -18,8 +18,8 @@ class App:
         self.worker = None
         self.win = tk.Tk()
         self.win.title(TITLE)
-        self.win.geometry('680x600')
-        self.win.minsize(580, 520)
+        self.win.geometry('700x700')
+        self.win.minsize(600, 660)
         self.win.protocol('WM_DELETE_WINDOW', self.on_close)
         pad = {'padx': 12, 'pady': 6}
         self.head = ttk.Label(self.win, text='', font=('Segoe UI', 12, 'bold'))
@@ -42,6 +42,7 @@ class App:
         mrow.pack(fill='x', padx=8, pady=(0, 6))
         ttk.Button(mrow, text='Open mods folder', command=self.open_mods).pack(side='left')
         ttk.Button(mrow, text='Look again', command=self.load_mods).pack(side='left', padx=(8, 0))
+        ttk.Button(mrow, text='Find a mod download...', command=self.locate).pack(side='left', padx=(8, 0))
         self.mod_note = ttk.Label(mrow, text='', foreground='#a33')
         self.mod_note.pack(side='left', padx=(12, 0))
         self.selected = list(cfg.get('mods', []))
@@ -51,10 +52,10 @@ class App:
         self.stage.pack(anchor='w', **pad)
         self.bar = ttk.Progressbar(self.win, mode='determinate', maximum=100)
         self.bar.pack(fill='x', **pad)
-        self.log = tk.Text(self.win, height=7, wrap='word', state='disabled', font=('Consolas', 9))
-        self.log.pack(fill='both', expand=True, **pad)
         btns = ttk.Frame(self.win)
-        btns.pack(fill='x', **pad)
+        btns.pack(side='bottom', fill='x', **pad)            # packed before the log: the buttons always stay visible
+        self.log = tk.Text(self.win, height=6, wrap='word', state='disabled', font=('Consolas', 9))
+        self.log.pack(fill='both', expand=True, **pad)
         self.go = ttk.Button(btns, text='Convert', command=self.start)
         self.go.pack(side='right')
         self.play_btn = ttk.Button(btns, text='Play', command=self.play)
@@ -69,7 +70,7 @@ class App:
     def load_mods(self):
         for w in self.mod_rows.winfo_children():
             w.destroy()
-        self.found, problems = modlib.discover(self.paths.mods)
+        self.found, problems = modlib.discover(self.paths.mods, install.load_config(self.paths).get('sources'))
         self.selected = [i for i in self.selected if i in self.found]
         self.mod_vars = {}
         if not self.found:
@@ -78,6 +79,9 @@ class App:
         for m in sorted(self.found.values(), key=lambda m: (m.order, m.id)):
             v = tk.BooleanVar(value=m.id in self.selected)
             text = f'{m.name}  {m.version}'.strip()
+            missing = m.missing_sources()
+            if missing:
+                text += '   - needs your own ' + ', '.join(m.sources[s].get('name', s) for s in missing)
             ttk.Checkbutton(self.mod_rows, text=text, variable=v, command=lambda i=m.id: self.toggle(i)).pack(anchor='w')
             self.mod_vars[m.id] = v
         for t in problems:
@@ -114,6 +118,31 @@ class App:
     def open_mods(self):
         os.makedirs(self.paths.mods, exist_ok=True)
         os.startfile(self.paths.mods)
+
+    def locate(self):
+        """A mod download kept outside the mods folder (an emulator's mod folder ...): remembered in the config."""
+        needed = [(m, sid) for m in self.found.values() for sid in m.sources]
+        if not needed:
+            messagebox.showinfo(TITLE, 'None of the mod packs in the mods folder needs a download of its own.')
+            return
+        d = filedialog.askdirectory(title='Select the folder of your extracted mod download')
+        if not d:
+            return
+        hits = []
+        for m, sid in needed:
+            data = modlib.find_source(os.path.normpath(d), m, sid)
+            if data:
+                cfg = install.load_config(self.paths)
+                cfg.setdefault('sources', {})[sid] = os.path.normpath(d)
+                install.save_config(self.paths, cfg)
+                hits.append(f'{m.sources[sid].get("name", sid)}: {data}')
+        if hits:
+            messagebox.showinfo(TITLE, 'Found:\n' + '\n'.join(dict.fromkeys(hits)))
+        else:
+            messagebox.showerror(TITLE, 'This folder holds none of the downloads the mod packs need:\n' +
+                                 '\n'.join(dict.fromkeys(f'{m.sources[s].get("name", s)} - {m.sources[s].get("where", "")}'
+                                                         for m, s in needed)))
+        self.load_mods()
 
     # --- state --------------------------------------------------------------------------------------------------------
     def refresh(self):

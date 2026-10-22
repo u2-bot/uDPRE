@@ -23,7 +23,7 @@ import os
 import shutil
 import time
 
-from . import CONVERT_VERSION, mods as modlib
+from . import CONVERT_VERSION, movies, mods as modlib
 from .unityfiles import ConvertError
 
 # BDSP v1.3.0 (Brilliant Diamond, Switch): files every correct dump has byte-identical (sha1, size) - the same fingerprints
@@ -147,10 +147,11 @@ def is_installed(p):
 
 
 class Setup:
-    """What a conversion uses besides the dump: the chosen mods, the player profile, the shader pack and player base."""
+    """What a conversion uses besides the dump: the chosen mods, the player profile, the shader pack and player base.
+    picked = {source id: folder} downloads the player pointed at outside the mods folder."""
 
-    def __init__(self, p, mod_ids):
-        self.found, self.problems = modlib.discover(p.mods)
+    def __init__(self, p, mod_ids, picked=None):
+        self.found, self.problems = modlib.discover(p.mods, picked)
         self.chosen = modlib.choose(self.found, mod_ids)
         self.player_mod = modlib.player_mod(self.chosen)
         if self.player_mod:
@@ -208,7 +209,7 @@ def status(p):
                     'mods': mod_ids}
         return {'state': 'convert', 'stale': [], 'reason': 'not converted yet', 'mods': mod_ids}
     try:
-        setup = Setup(p, mod_ids)
+        setup = Setup(p, mod_ids, cfg.get('sources'))
     except modlib.ModError as e:
         return {'state': 'refresh', 'stale': [], 'reason': f'the mod choice cannot be used: {e}', 'mods': mod_ids}
     old, now = cfg.get('fingerprint') or {}, fingerprint(p, setup)
@@ -394,13 +395,15 @@ def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=
         raise DumpError('\n'.join(problems))
     mod_ids = list(cfg.get('mods', []) if mods is None else mods)
     try:
-        setup = Setup(p, mod_ids)
+        setup = Setup(p, mod_ids, cfg.get('sources'))
         stack = modlib.Stack(data, setup.chosen, bundles)
         shaders_src = stack.shaders_bundle()
     except modlib.ModError as e:
         raise DumpError(str(e))
     for m in setup.chosen:
-        log(f'mod: {m.name} {m.version}')
+        log(f'mod: {m.name} {m.version}' + ''.join(f'; your {m.sources[s].get("name", s)}: {d}'
+                                                    for s, d in m.source_paths.items()))
+    verify_sources(p, setup, progress)
     odd = sorted(k for k, s in stack.copies().items() if s.kind == 'switch' and not k.startswith(COPY_PREFIXES))
     if odd:
         raise DumpError(f'A mod changes files uDPRE cannot convert yet: {", ".join(odd[:5])}')
@@ -494,7 +497,8 @@ def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=
     copied = copy_files(p, stack, copied_old)
     os.makedirs(os.path.join(p.out, 'StreamingAssets', 'AK'), exist_ok=True)
     progress('audio and movies', 1, 1)
-    log(f'copied {copied["copied"]} files (catalog, audio, movies, mod files), removed {copied["removed"]}')
+    log(f'copied {copied["copied"]} files (catalog, audio, movies, mod files), removed {copied["removed"]}'
+        + (f', {copied["encoded"]} movies re-encoded to VP8' if copied['encoded'] else ''))
     cfg['complete_version'] = CONVERT_VERSION
     cfg['completed'] = time.strftime('%Y-%m-%d %H:%M:%S')
     cfg['fingerprint'] = fingerprint(p, setup)
@@ -503,13 +507,54 @@ def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=
             'player': setup.player_id}
 
 
+def verify_sources(p, setup, progress):
+    """Every file a chosen pack takes from the player's own download must have the size and sha1 the pack lists (the mod
+    version it was made for, extracted completely). Digests are cached by path + size + time in state/source_hashes.json."""
+    cache_path = os.path.join(p.state, 'source_hashes.json')
+    cache = _load_json(cache_path, {})
+    jobs = [(m, sid) for m in setup.chosen for sid in m.sources]
+    total = sum(len(m.source_list(sid)) for m, sid in jobs)
+    k = 0
+    for m, sid in jobs:
+        root = m.source_paths[sid]
+        bad = []
+        for rel, (size, digest) in m.source_list(sid).items():
+            k += 1
+            f = os.path.join(root, *rel.split('/'))
+            if not os.path.isfile(f):
+                bad.append(f'{rel} is missing')
+                continue
+            st = os.stat(f)
+            if st.st_size != size:
+                bad.append(f'{rel} has another size')
+                continue
+            c = cache.get(f)
+            if c and c[0] == st.st_size and c[1] == st.st_mtime_ns:
+                h = c[2]
+            else:
+                h = sha1(f)
+                cache[f] = [st.st_size, st.st_mtime_ns, h]
+            if h != digest:
+                bad.append(f'{rel} has other contents')
+            if k % 100 == 0 or k == total:
+                progress('checking your mod downloads', k, total)
+        if bad:
+            _save_json(cache_path, cache)
+            name = m.sources[sid].get('name', sid)
+            raise DumpError(f'Your copy of {name} ({root}) is incomplete or another version: {len(bad)} of the '
+                            f'{len(m.source_list(sid))} files the {m.name} pack needs are missing or differ '
+                            f'({"; ".join(bad[:3])}). Extract the original {name} download again (with 7-Zip).')
+    if jobs:
+        _save_json(cache_path, cache)
+
+
 def copy_files(p, stack, copied_old):
     """Every file the stack copies byte for byte -> Dpr_Data; files a previous conversion copied that no layer has any more
     are removed. copied_old None = no record yet (a first conversion, or a folder converted by uDPRE 0.1.0): a dump file
     already there with the same size is taken as copied."""
     want = stack.copies()
     rec = dict(copied_old or {})
-    n = removed = 0
+    n = removed = encoded = 0
     for rel in [r for r in rec if r not in want]:
         f = os.path.join(p.out, *rel.split('/'))
         if os.path.isfile(f):
@@ -524,8 +569,13 @@ def copy_files(p, stack, copied_old):
             if copied_old is None and s.key == 'dump' and os.path.getsize(dst) == os.path.getsize(s.path):
                 rec[rel] = s.key
                 continue
-        place(s.path, dst, link=s.kind == 'windows')
+        if s.key != 'dump' and rel.startswith('StreamingAssets/Movie/') and rel.lower().endswith('.webm'):
+            # a mod's movie: copied when VP8, else re-encoded (the Windows player decodes VP8 only)
+            how = movies.place_movie(s.path, dst, s.sha1 or sha1(s.path), os.path.join(p.state, 'movies'))
+            encoded += how == 'encoded'
+        else:
+            place(s.path, dst, link=s.kind == 'windows')
         rec[rel] = s.key
         n += 1
     _save_json(p.copied, rec)
-    return {'copied': n, 'removed': removed}
+    return {'copied': n, 'removed': removed, 'encoded': encoded}

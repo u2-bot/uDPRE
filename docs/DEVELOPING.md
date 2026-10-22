@@ -119,8 +119,28 @@ game draws those materials pink. So mods go through the converter in Switch form
 | `id`, `name`, `version`, `description` | shown in the window; `id` is what `--mods` and the other packs name |
 | `order` | layer position, higher = on top (Luminescent 10, Easy-Mode 20, Dechibified 30, No Balance 40, FR / Castellano / Latam / IT 50, PT-BR 60) |
 | `requires`, `conflicts` | ids; the window turns required packs on and conflicting ones off |
-| `layers` | `{"romfs": DIR}` = Switch files with their `romfs/Data` paths, converted like the dump; `{"files": DIR}` = Windows files with their `Dpr_Data` paths, copied (hard-linked when the drive allows). Optional `when` / `unless` (ids) choose variants (the Dechibified version of a translation ...); later layers of a pack win. Optional `dump` = `{romfs path: dump path}`: a mod file byte-identical to another dump file is taken from the dump instead of shipped |
+| `sources` | downloads the PLAYER brings (a mod we do not redistribute): `{ID: {"name", "where", "list", "key"}}`; `list` = `sources/ID.json` = `{romfs path: [size, sha1]}` of every file the pack takes from it, `key` = the path that identifies it |
+| `layers` | `{"romfs": DIR}` = Switch files with their `romfs/Data` paths, converted like the dump; `{"source": ID}` = the listed files of the player's own download; `{"files": DIR}` = Windows files with their `Dpr_Data` paths, copied (hard-linked when the drive allows). Optional `when` / `unless` (ids) choose variants (the Dechibified version of a translation ...); later layers of a pack win. Optional `dump` = `{romfs path: dump path}`: a mod file byte-identical to another dump file is taken from the dump instead of shipped. Optional `copy` = `{romfs path: romfs path}`: a file that is a copy of another one of the stack below (a translation's opening = Luminescent's) |
 | `player` | folder of a player profile: `profile.json` (`id`, `files`), the code files at their root-relative paths (`GameAssembly.dll`, `global-metadata.dat`, `app.info`, the renumbered `globalgamemanagers.assets`), `udpre/base/globalgamemanagers`, `udpre/shaders.pack` |
+
+**The Luminescent pack ships none of Luminescent's files.** It holds our port of Lumi's game code (the console mod's
+`exefs` patches the Switch executable, which a PC player does not have), its shader pack and registry, and the list of the
+3,446 files of Lumi 2.2F (BD) it uses. The player extracts their own Lumi download into `mods/` (any depth) or points at it
+(window: "Find a mod download...", console: `locate FOLDER`, kept in the config as `sources`). `mods.discover` finds it by
+the key file (`Dpr.bin`, size + sha1), claims that folder (so its `exefs` is not refused as a code mod), and
+`install.verify_sources` checks every listed file's sha1 before converting (cached by path + size + time in
+`state/source_hashes.json`). Bundle keys of source files are their sha1, so moving the download converts nothing again.
+Converted from the player's download, the 3,135 Lumi bundles are byte-identical to the ones converted from the files
+themselves.
+
+**Movies** (`movies.py`): the Windows player decodes VP8 only. A movie a mod brings is copied when VP8 and re-encoded to
+VP8 otherwise: `webm.py` reads the WebM (one video track, no lacing), `vpx.py` decodes VP9 and encodes VP8 with libvpx 1.17.0
+through ctypes (3 Mbit/s, quantizer 4..42, no alt-ref, keyframe at most every 120 frames, video only, each frame keeps its
+timestamp: the settings of the uDPR Windows builds), `webm.py` writes SeekHead / Info / Tracks / Clusters / Cues like the
+game's own movies. Lumi's VP9 opening takes ~12 s, with the same PSNR against the VP9 source as our PC builds' FFmpeg copy
+(35-38.5 dB); ffprobe reads the result without a warning. Results are cached in `state/movies/` by the source's sha1.
+libvpx ships as two DLLs taken from PyAV's wheel at build time (`release/build_exe.py`, sha256-pinned); PyAV / FFmpeg do not
+ship (that FFmpeg build links the GPL encoders x264 / x265).
 
 **What the converter does with packs** (`install.run`, `mods.Stack`): every `Dpr_Data` path gets the top-most source of the
 stack dump -> enabled packs' active layers. Bundles are converted from that source (strict whole-stream proof only for the
@@ -140,8 +160,9 @@ pack was not built for gets that shader's build from `Dpr/shaders` (`ShaderPack.
 names each layer's sources (folders with include / exclude globs, or single files) and, for a code mod, the Windows player
 built with it (profile = its code files + `make_player_base.py` + `make_shaderpack.py --overlay <the mod's romfs/Data>`).
 Layer files are hard links. A romfs file byte-identical to the dump's at the same path is left out, and one identical to
-another dump file goes into the `dump` map. The audit fails on any file with the bytes of a dump file, or a player file
-naming a build-machine folder. Our fixes to a mod are applied to its Switch files (typetree edits, RGBA32 texture writes),
+another dump file goes into the `dump` map. A `source` layer writes only the file list. The audit fails on any file with the
+bytes of a dump file or of a `--forbid DIR` folder (every pack is built with `--forbid <the Lumi 2.2F download>`), or a
+player file naming a build-machine folder. Our fixes to a mod are applied to its Switch files (typetree edits, RGBA32 texture writes),
 never by taking a bundle out of a Windows build. Windows bundles are allowed only where no Switch form exists (the
 Dechibified wardrobe), with every shader reference already rebased to the Switch IDs.
 

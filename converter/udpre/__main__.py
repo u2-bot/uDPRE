@@ -4,7 +4,8 @@
   uDPRE.exe convert [DUMP] [--mods ID,ID|none] [--workers N] [--root DIR]
                                     console conversion (no DUMP = the dump of the last conversion; no --mods = the mods chosen
                                     last time; after an update or a mod change it makes only what changed)
-  uDPRE.exe mods [--root DIR]       the mod packs in the mods folder and which ones are on
+  uDPRE.exe mods [--root DIR]       the mod packs in the mods folder, which ones are on, and the downloads they need
+  uDPRE.exe locate FOLDER [--root DIR]  a mod download (e.g. Luminescent 2.2F) kept outside the mods folder
   uDPRE.exe status [--root DIR]     ready / refresh needed / not converted
 Without --root the uDPRE folder is the one holding the executable (frozen) or the current folder.
 """
@@ -73,15 +74,39 @@ def main(argv=None):
     if cmd == 'mods':
         from . import mods as modlib
         p = install.Paths(root)
-        found, problems = modlib.discover(p.mods)
-        on = install.load_config(p).get('mods', [])
+        cfg = install.load_config(p)
+        found, problems = modlib.discover(p.mods, cfg.get('sources'))
+        on = cfg.get('mods', [])
         print(f'mods folder: {p.mods}')
         for m in sorted(found.values(), key=lambda m: (m.order, m.id)):
             extra = ''.join([f'  needs {",".join(m.requires)}' if m.requires else '',
                              f'  not with {",".join(m.conflicts)}' if m.conflicts else ''])
             print(f'  [{"x" if m.id in on else " "}] {m.id:<14} {m.name} {m.version}{extra}')
+            for sid in m.sources:
+                where = m.source_paths.get(sid)
+                print(f'        your {m.sources[sid].get("name", sid)}: '
+                      + (where if where else f'NOT FOUND - {m.sources[sid].get("where", "")}'))
         for t in problems:
             print(f'  cannot use: {t}')
+        return 0
+    if cmd == 'locate':
+        from . import mods as modlib
+        p = install.Paths(root)
+        cfg = install.load_config(p)
+        folder = os.path.abspath(args[0]) if args else ''
+        found, _ = modlib.discover(p.mods, cfg.get('sources'))
+        hits = []
+        for m in found.values():
+            for sid in m.sources:
+                data = modlib.find_source(folder, m, sid) if os.path.isdir(folder) else None
+                if data:
+                    cfg.setdefault('sources', {})[sid] = folder
+                    hits.append(f'{m.sources[sid].get("name", sid)}: {data}')
+        if not hits:
+            print(f'PROBLEM: {folder or "(no folder given)"} holds no download a mod pack in {p.mods} needs')
+            return 1
+        install.save_config(p, cfg)
+        print('found ' + '; '.join(dict.fromkeys(hits)))
         return 0
     if cmd == 'status':
         p = install.Paths(root)

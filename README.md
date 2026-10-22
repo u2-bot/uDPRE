@@ -35,25 +35,33 @@ changes it. Keep it: a later uDPRE update may need to convert again.
 uDPRE converts mods together with your dump, so Luminescent Platinum and its add-ons work on a uDPRE folder.
 
 1. Put each **uDPRE mod pack** (a folder with a `udpre_mod.json` file in it) into the `mods` folder of your uDPRE folder.
-2. Start **uDPRE.exe**. The packs show up in the **Mods** box. Tick the ones you want, then press **Convert** (or
+2. **Luminescent Platinum:** the pack holds only the PC version of Luminescent's game code. Its game data comes from **your
+   own download of Luminescent Platinum 2.2F for Brilliant Diamond**: extract it with 7-Zip and put the extracted folder
+   (the one with `romfs` and `exefs` inside) into the `mods` folder too. If you keep it somewhere else (an emulator's mod
+   folder, for example), press **Find a mod download...** and pick that folder instead. uDPRE checks every file of it
+   before converting, and tells you when the download is incomplete or another version.
+3. Start **uDPRE.exe**. The packs show up in the **Mods** box. Tick the ones you want, then press **Convert** (or
    **Apply** if your game is already converted).
-3. Press **Play**.
+4. Press **Play**.
 
 - A pack that needs another one turns it on with it. For example, Easy-Mode needs Luminescent. Packs that cannot be used
   together turn each other off. The French, Castellano, Latam and Italian translations are like that; the PT-BR
   translation works with any of them.
 - Changing the mods later makes again only the files the change touches. Unticking every mod gives you the unmodded game
   again.
-- Luminescent brings its own game code and keeps its saves apart from the unmodded game.
-- Mods take extra disk space: about 1.5 GB for Luminescent, and 2.5 GB more for Dechibified.
+- Luminescent brings its own game code and keeps its saves apart from the unmodded game. Its opening movie is re-encoded
+  for Windows on your PC during the conversion (about 15 seconds).
+- Mods take extra disk space: about 1.5 GB for Luminescent (plus your extracted download), and 2.5 GB more for
+  Dechibified.
 - **Patches made for other PC builds** (folders you copy over a game folder) do **not** work on a uDPRE folder. They
   were made against other game files, and copying them over breaks references between the files: pink graphics, missing
   models. Use the uDPRE pack of that mod instead.
 - A console mod that only changes data (a folder with `romfs\Data` in it, no `exefs`) can be put in `mods` too. uDPRE
   converts its files on top of everything else. A console mod with `exefs` changes the game code and needs a uDPRE pack.
 
-From a command prompt: `uDPRE.exe mods` lists the packs, and `uDPRE.exe convert --mods luminescent,easymode` converts
-with those mods (`--mods none` turns them all off).
+From a command prompt: `uDPRE.exe mods` lists the packs and the downloads they found, `uDPRE.exe locate "D:\Mods\Lumi"`
+points uDPRE at a download kept elsewhere, and `uDPRE.exe convert --mods luminescent,easymode` converts with those mods
+(`--mods none` turns them all off).
 
 ## Updates
 
@@ -92,7 +100,8 @@ is one) and the game's log: `%USERPROFILE%\AppData\LocalLow\DefaultCompany\Dpr\P
 Our player (`Dpr.exe`, `GameAssembly.dll`, `Dpr_Data` without any game data), Unity's runtime, the shader programs compiled for
 Direct3D 11, the converter (`uDPRE.exe`, `udpre_runtime`, `udpre`) and an empty `mods` folder. Before every release an audit
 checks that no file in it holds bytes of the game: no textures, models, sounds, text or scripts of the game ship with uDPRE.
-Mod packs are separate downloads. They hold only the files their mod changed or added, never a file of the game.
+Mod packs are separate downloads. They never hold a file of the game, and the Luminescent pack holds none of
+Luminescent's own files either: they come from your own Luminescent download.
 
 ## Legal
 
