@@ -1,0 +1,5 @@
+# uDPRE converter (Python 3.13) - versions the 2026-10-22 full-dump verification ran with
+UnityPy==1.25.2
+texture2ddecoder==1.0.6
+numpy==2.5.1
+lz4==4.4.5
