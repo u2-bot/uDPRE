@@ -1,10 +1,11 @@
 """uDPRE entry point.
 
   uDPRE.exe                         window: pick the dump once, choose mods, convert, play (gui.py)
-  uDPRE.exe convert [DUMP] [--mods ID,ID|none] [--workers N] [--root DIR]
+  uDPRE.exe convert [DUMP] [--mods ID,ID|none] [--options ID.OPTION=CHOICE,...] [--workers N] [--root DIR]
                                     console conversion (no DUMP = the dump of the last conversion; no --mods = the mods chosen
-                                    last time; after an update or a mod change it makes only what changed)
-  uDPRE.exe mods [--root DIR]       the mod packs in the mods folder, which ones are on, and the downloads they need
+                                    last time; --options = picks under a pack's tick, e.g. --options shinyodds.odds=6, the
+                                    other picks stay as last time; after an update or a mod change it makes only what changed)
+  uDPRE.exe mods [--root DIR]       the mod packs in the mods folder, which ones are on, their options, the downloads they need
   uDPRE.exe locate FOLDER [--root DIR]  a mod download (e.g. Luminescent 2.2F) kept outside the mods folder
   uDPRE.exe status [--root DIR]     ready / refresh needed / not converted
 Without --root the uDPRE folder is the one holding the executable (frozen) or the current folder.
@@ -28,6 +29,18 @@ def opt(args, name, default=None):
     return default
 
 
+def parse_options(text):
+    """'shinyodds.odds=6,other.x=y' -> {'shinyodds': {'odds': '6'}, 'other': {'x': 'y'}}"""
+    out = {}
+    for item in filter(None, (t.strip() for t in (text or '').split(','))):
+        key, sep, choice = item.partition('=')
+        mod, dot, oid = key.partition('.')
+        if not (sep and dot and mod and oid and choice):
+            raise ValueError(f'--options {item}: write it as PACK.OPTION=CHOICE (uDPRE.exe mods lists them)')
+        out.setdefault(mod, {})[oid] = choice
+    return out
+
+
 def attach_console(root):
     """uDPRE.exe is built windowed (no console for the window); the console commands print to the console they ran from,
     or - started without one - to udpre/state/console.log."""
@@ -48,6 +61,7 @@ def main(argv=None):
     root = opt(args, '--root', default_root())
     workers = opt(args, '--workers')
     mods = opt(args, '--mods')
+    options = opt(args, '--options')
     if not args:
         from . import gui
         return gui.main(root)
@@ -64,9 +78,10 @@ def main(argv=None):
                 print(f'{stage}: {done}/{total}', flush=True)
         chosen = None if mods is None else [m for m in mods.split(',') if m and m != 'none']
         try:
+            picks = parse_options(options)
             r = install.run(root, args[0] if args else None, int(workers) if workers else None, progress,
-                            lambda s: print(s, flush=True), mods=chosen)
-        except (install.DumpError, install.ConvertError) as e:
+                            lambda s: print(s, flush=True), mods=chosen, options=picks)
+        except (install.DumpError, install.ConvertError, ValueError) as e:
             print(f'PROBLEM: {e}')
             return 1
         print(f'done: {r}')
@@ -84,6 +99,12 @@ def main(argv=None):
             print(f'  [{"x" if m.id in on else " "}] {m.id:<14} {m.name} {m.version}{extra}')
             if m.author or m.url:
                 print(f'        by {m.author or "-"}' + (f'  {m.url}' if m.url else ''))
+            m.set_choice((cfg.get('options') or {}).get(m.id))
+            for o in m.options:
+                print(f'        option {m.id}.{o["id"]} - {o["name"]}:')
+                for c in o['choices']:
+                    mark = '*' if m.choice[o['id']] == c['id'] else ' '
+                    print(f'          ({mark}) {c["id"]:<8} {c["name"]}' + ('  (default)' if c['id'] == o['default'] else ''))
             for sid in m.sources:
                 where = m.source_paths.get(sid)
                 print(f'        your {m.sources[sid].get("name", sid)}: '
@@ -119,8 +140,11 @@ def main(argv=None):
         print(f'state: {st["state"]}' + (f' ({st["reason"]})' if st['reason'] else ''))
         if st['stale']:
             print(f'bundles to convert again: {", ".join(st["stale"])}')
-        print(f'dump: {cfg.get("dump", "-")}\nmods: {", ".join(cfg.get("mods", [])) or "-"}\n'
-              f'last completed: {cfg.get("completed", "-")}')
+        on = cfg.get('mods', [])
+        picks = ', '.join(f'{mid}.{oid}={cid}' for mid, d in (cfg.get('options') or {}).items() if mid in on
+                          for oid, cid in d.items())
+        print(f'dump: {cfg.get("dump", "-")}\nmods: {", ".join(on) or "-"}' + (f'\noptions: {picks}' if picks else '') +
+              f'\nlast completed: {cfg.get("completed", "-")}')
         return 0
     print(__doc__)
     return 2

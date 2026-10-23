@@ -20,6 +20,8 @@ every file of it before converting.
 - Packs that need another pack turn it on with them (for example Easy-Mode needs Luminescent).
   Packs that cannot be used together (the French, Spanish and Italian translations) turn each
   other off.
+- Some packs have options (for example a mod released in several versions): tick the pack and
+  its choices open under it; pick one and press Apply.
 - Changing the mods later makes again only the files the change touches.
 - Luminescent keeps its saves apart from the unmodded game.
 

@@ -66,6 +66,9 @@ uDPRE converts mods together with your dump, so Luminescent Platinum and its add
 - A pack that needs another one turns it on with it. For example, Easy-Mode needs Luminescent. Packs that cannot be used
   together turn each other off. The French, Castellano, Latam and Italian translations are like that; the PT-BR
   translation works with any of them.
+- Some packs have **options**: when you tick such a pack, its choices open under it (for a mod released in several
+  versions, for example different shiny odds). Pick one, then press **Apply**. Changing the pick later makes again only
+  the files it touches, and uDPRE remembers your pick when you untick the pack.
 - Changing the mods later makes again only the files the change touches. Unticking every mod gives you the unmodded game
   again.
 - Luminescent brings its own game code and keeps its saves apart from the unmodded game. Its opening movie is re-encoded
@@ -80,7 +83,8 @@ uDPRE converts mods together with your dump, so Luminescent Platinum and its add
 
 From a command prompt: `uDPRE.exe mods` lists the packs and the downloads they found, `uDPRE.exe locate "D:\Mods\Lumi"`
 points uDPRE at a download kept elsewhere, and `uDPRE.exe convert --mods luminescent,easymode` converts with those mods
-(`--mods none` turns them all off).
+(`--mods none` turns them all off). A pack's option is picked with `--options PACK.OPTION=CHOICE` (`uDPRE.exe mods` lists
+the choices).
 
 ### Where to find mod packs
 

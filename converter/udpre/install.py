@@ -153,11 +153,12 @@ def release_info(p):
 
 class Setup:
     """What a conversion uses besides the dump: the chosen mods, the player profile, the shader pack and player base.
-    picked = {source id: folder} downloads the player pointed at outside the mods folder."""
+    picked = {source id: folder} downloads the player pointed at outside the mods folder; options = {pack id: {option id:
+    choice id}} the picks under the packs' ticks."""
 
-    def __init__(self, p, mod_ids, picked=None):
+    def __init__(self, p, mod_ids, picked=None, options=None):
         self.found, self.problems = modlib.discover(p.mods, picked)
-        self.chosen = modlib.choose(self.found, mod_ids)
+        self.chosen = modlib.choose(self.found, mod_ids, options)
         self.player_mod = modlib.player_mod(self.chosen)
         if self.player_mod:
             self.profile, self.player_dir = modlib.load_profile(self.player_mod)
@@ -208,15 +209,17 @@ def status(p):
     update of our player base or shaders, the chosen mods, missing files): only the affected files are made again."""
     cfg = load_config(p)
     mod_ids = cfg.get('mods', [])
+    opts = cfg.get('options', {})
     if cfg.get('complete_version') != CONVERT_VERSION:
         if cfg.get('complete_version') is not None:
             return {'state': 'convert', 'stale': [], 'reason': 'this uDPRE version converts the game data in a new way',
-                    'mods': mod_ids}
-        return {'state': 'convert', 'stale': [], 'reason': 'not converted yet', 'mods': mod_ids}
+                    'mods': mod_ids, 'options': opts}
+        return {'state': 'convert', 'stale': [], 'reason': 'not converted yet', 'mods': mod_ids, 'options': opts}
     try:
-        setup = Setup(p, mod_ids, cfg.get('sources'))
+        setup = Setup(p, mod_ids, cfg.get('sources'), opts)
     except modlib.ModError as e:
-        return {'state': 'refresh', 'stale': [], 'reason': f'the mod choice cannot be used: {e}', 'mods': mod_ids}
+        return {'state': 'refresh', 'stale': [], 'reason': f'the mod choice cannot be used: {e}', 'mods': mod_ids,
+                'options': opts}
     old, now = cfg.get('fingerprint') or {}, fingerprint(p, setup)
     stale = sorted(c for c, d in now['pack'].items() if (old.get('pack') or {}).get(c) != d)
     reasons = []
@@ -237,8 +240,8 @@ def status(p):
     if gone:
         reasons.append(f'{gone} converted bundles missing')
     if reasons:
-        return {'state': 'refresh', 'stale': stale, 'reason': '; '.join(reasons), 'mods': mod_ids}
-    return {'state': 'ready', 'stale': [], 'reason': '', 'mods': mod_ids}
+        return {'state': 'refresh', 'stale': stale, 'reason': '; '.join(reasons), 'mods': mod_ids, 'options': opts}
+    return {'state': 'ready', 'stale': [], 'reason': '', 'mods': mod_ids, 'options': opts}
 
 
 def done_map(p):
@@ -380,10 +383,11 @@ def apply_player(p, setup, cfg, log):
     log(f'player: {setup.player_id} ({changed} files put in place)')
 
 
-def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=None):
+def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=None, options=None):
     """Converts the dump (+ the chosen mods) into the uDPRE folder `root` - everything on a first run, later only what
     changed (status()). dump_selected None = the dump of the last conversion; mods None = the mods chosen last time (a list
-    of pack ids). progress(stage, done, total) / log(text). Returns a summary dict; raises DumpError / ConvertError."""
+    of pack ids); options = picks under the packs' ticks {pack id: {option id: choice id}}, laid over the picks kept from
+    last time. progress(stage, done, total) / log(text). Returns a summary dict; raises DumpError / ConvertError."""
     p = Paths(root)
     cfg = load_config(p)
     if dump_selected is None:
@@ -399,15 +403,18 @@ def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=
     if problems:
         raise DumpError('\n'.join(problems))
     mod_ids = list(cfg.get('mods', []) if mods is None else mods)
+    opts = {k: dict(v) for k, v in cfg.get('options', {}).items()}
+    for k, v in (options or {}).items():
+        opts.setdefault(k, {}).update(v)
     try:
-        setup = Setup(p, mod_ids, cfg.get('sources'))
+        setup = Setup(p, mod_ids, cfg.get('sources'), opts)
         stack = modlib.Stack(data, setup.chosen, bundles)
         shaders_src = stack.shaders_bundle()
     except modlib.ModError as e:
         raise DumpError(str(e))
     for m in setup.chosen:
-        log(f'mod: {m.name} {m.version}' + ''.join(f'; your {m.sources[s].get("name", s)}: {d}'
-                                                    for s, d in m.source_paths.items()))
+        log(f'mod: {m.name} {m.version}' + ''.join(f'; {o["name"]}: {m.choice_name(o["id"])}' for o in m.options)
+            + ''.join(f'; your {m.sources[s].get("name", s)}: {d}' for s, d in m.source_paths.items()))
     verify_sources(p, setup, progress)
     odd = sorted(k for k, s in stack.copies().items() if s.kind == 'switch' and not k.startswith(COPY_PREFIXES))
     if odd:
@@ -416,7 +423,9 @@ def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=
     st0 = status(p)
     if st0['state'] == 'refresh':
         log(f'refresh: {st0["reason"]}')
-    cfg.update({'dump': data, 'mods': setup.mod_ids, 'started_version': CONVERT_VERSION})
+    # picks of packs that are off stay remembered for when they come back on
+    opts.update(modlib.picks(setup.chosen))
+    cfg.update({'dump': data, 'mods': setup.mod_ids, 'options': opts, 'started_version': CONVERT_VERSION})
     cfg.pop('complete_version', None)
     save_config(p, cfg)
     workers = workers or default_workers()

@@ -38,16 +38,27 @@ class App:
         self.browse.pack(side='left', padx=(8, 0))
         self.mods_box = ttk.LabelFrame(self.win, text='Mods (packs in the "mods" folder)')
         self.mods_box.pack(fill='x', **pad)
-        self.mod_rows = ttk.Frame(self.mods_box)
-        self.mod_rows.pack(fill='x', padx=8, pady=4)
+        # the pack list scrolls once it is taller than MODS_HEIGHT (sub-options open under a ticked pack)
+        holder = ttk.Frame(self.mods_box)
+        holder.pack(fill='x', padx=8, pady=4)
+        self.mod_canvas = tk.Canvas(holder, height=40, highlightthickness=0, borderwidth=0)
+        self.mod_scroll = ttk.Scrollbar(holder, orient='vertical', command=self.mod_canvas.yview)
+        self.mod_canvas.configure(yscrollcommand=self.mod_scroll.set)
+        self.mod_canvas.pack(side='left', fill='x', expand=True)
+        self.mod_rows = ttk.Frame(self.mod_canvas)
+        self.mod_rows_id = self.mod_canvas.create_window((0, 0), window=self.mod_rows, anchor='nw')
+        self.mod_rows.bind('<Configure>', lambda _e: self.fit_mods())
+        self.mod_canvas.bind('<Configure>', lambda e: self.mod_canvas.itemconfigure(self.mod_rows_id, width=e.width))
+        self.mod_canvas.bind_all('<MouseWheel>', self.wheel)
         mrow = ttk.Frame(self.mods_box)
         mrow.pack(fill='x', padx=8, pady=(0, 6))
         ttk.Button(mrow, text='Open mods folder', command=self.open_mods).pack(side='left')
         ttk.Button(mrow, text='Look again', command=self.load_mods).pack(side='left', padx=(8, 0))
         ttk.Button(mrow, text='Find a mod download...', command=self.locate).pack(side='left', padx=(8, 0))
-        self.mod_note = ttk.Label(mrow, text='', foreground='#a33')
-        self.mod_note.pack(side='left', padx=(12, 0))
+        self.mod_note = ttk.Label(self.mods_box, text='', foreground='#a33', wraplength=640, justify='left')
+        self.mod_note.pack(anchor='w', padx=8, pady=(0, 4))        # its own line: a long reason is never cut
         self.selected = list(cfg.get('mods', []))
+        self.options = {k: dict(v) for k, v in (cfg.get('options') or {}).items()}   # picks under the packs' ticks
         self.mod_vars = {}
         self.found = {}
         self.stage = ttk.Label(self.win, text='')
@@ -68,15 +79,42 @@ class App:
         self.load_mods()
         self.win.after(100, self.poll)
         if self.state == 'refresh' and self.dump_var.get() and self.selected == cfg.get('mods', []) \
-                and not self.status.get('reason', '').startswith('the mod choice'):
+                and not self.picks_changed() and not self.status.get('reason', '').startswith('the mod choice'):
             self.win.after(400, self.start)       # after an update: refresh on its own, the player only presses Play
 
     # --- mods ---------------------------------------------------------------------------------------------------------
+    MODS_HEIGHT = 300
+
+    def fit_mods(self):
+        self.mod_canvas.configure(scrollregion=self.mod_canvas.bbox('all'))
+        h = self.mod_rows.winfo_reqheight()
+        self.mod_canvas.configure(height=min(h, self.MODS_HEIGHT))
+        if h > self.MODS_HEIGHT:
+            self.mod_scroll.pack(side='right', fill='y')
+        else:
+            self.mod_scroll.pack_forget()
+            self.mod_canvas.yview_moveto(0)
+
+    def wheel(self, e):
+        w = self.win.winfo_containing(e.x_root, e.y_root)
+        while w is not None and w is not self.mod_canvas:
+            w = w.master
+        if w is self.mod_canvas and self.mod_rows.winfo_reqheight() > self.MODS_HEIGHT:
+            self.mod_canvas.yview_scroll(-1 if e.delta > 0 else 1, 'units')
+
     def load_mods(self):
+        self.found, self.problems = modlib.discover(self.paths.mods, install.load_config(self.paths).get('sources'))
+        self.selected = [i for i in self.selected if i in self.found]
+        for i, picks in list(self.options.items()):     # a kept pick a newer pack no longer offers = its default again
+            m = self.found.get(i)
+            if m is not None:
+                valid = {o['id']: {c['id'] for c in o['choices']} for o in m.options}
+                self.options[i] = {oid: cid for oid, cid in picks.items() if cid in valid.get(oid, ())}
+        self.render_mods()
+
+    def render_mods(self):
         for w in self.mod_rows.winfo_children():
             w.destroy()
-        self.found, problems = modlib.discover(self.paths.mods, install.load_config(self.paths).get('sources'))
-        self.selected = [i for i in self.selected if i in self.found]
         self.mod_vars = {}
         if not self.found:
             ttk.Label(self.mod_rows, text='No mod packs. Put a uDPRE mod pack folder into the mods folder, then press '
@@ -99,9 +137,43 @@ class App:
                 if m.url:
                     link.bind('<Button-1>', lambda _e, u=m.url: webbrowser.open(u))
             self.mod_vars[m.id] = v
-        for t in problems:
+            if m.id in self.selected and m.options:
+                # the pack's sub-options, under its tick (shown while it is on)
+                m.set_choice(self.options.get(m.id))
+                for o in m.options:
+                    ttk.Label(self.mod_rows, text=o['name'], foreground='#444').pack(anchor='w', padx=(28, 0))
+                    ov = tk.StringVar(value=m.choice[o['id']])
+                    for c in o['choices']:
+                        ttk.Radiobutton(self.mod_rows, text=c['name'], value=c['id'], variable=ov,
+                                        command=lambda i=m.id, oid=o['id'], var=ov: self.pick_option(i, oid, var.get())
+                                        ).pack(anchor='w', padx=(44, 0))
+        for t in self.problems:
             ttk.Label(self.mod_rows, text='Cannot use: ' + t, foreground='#a33', wraplength=600).pack(anchor='w')
         self.refresh()
+
+    def pick_option(self, mod_id, oid, cid):
+        self.options.setdefault(mod_id, {})[oid] = cid
+        self.refresh()
+
+    def picks_now(self):
+        """{pack id: picks with defaults} of the ticked packs that have sub-options - as the window shows them."""
+        out = {}
+        for i in self.selected:
+            m = self.found.get(i)
+            if m is not None and m.options:
+                m.set_choice(self.options.get(i))
+                out[i] = dict(m.choice)
+        return out
+
+    def picks_changed(self):
+        """the picks differ from the last conversion's (a pick never made = the default, the same either way)."""
+        kept = install.load_config(self.paths).get('options') or {}
+        for i, now in self.picks_now().items():
+            m = self.found[i]
+            m.set_choice(kept.get(i))
+            if dict(m.choice) != now:
+                return True
+        return False
 
     def toggle(self, mod_id):
         on = set(self.selected)
@@ -126,9 +198,7 @@ class App:
                     on.discard(i)
                     changed = True
         self.selected = [m.id for m in sorted((self.found[i] for i in on), key=lambda m: (m.order, m.id))]
-        for i, v in self.mod_vars.items():
-            v.set(i in on)
-        self.refresh()
+        self.render_mods()          # a ticked pack's sub-options open under it, an unticked one's close
 
     def open_mods(self):
         os.makedirs(self.paths.mods, exist_ok=True)
@@ -167,13 +237,15 @@ class App:
             st = {'state': 'convert', 'stale': [], 'reason': f'{type(e).__name__}: {e}', 'mods': []}
         self.status = st
         self.state = st['state']
-        mods_changed = self.selected != st.get('mods', [])
+        mods_changed = self.selected != st.get('mods', []) or self.picks_changed()
         try:
-            modlib.choose(self.found, self.selected)
+            modlib.choose(self.found, self.selected, self.options)
             self.mod_note.config(text='')
         except modlib.ModError as e:
             self.mod_note.config(text=str(e).splitlines()[0])
-        names = ', '.join(self.found[i].name for i in self.selected if i in self.found) or 'none'
+        names = ', '.join(self.found[i].name + ''.join(f' ({self.found[i].choice_name(o["id"])})'
+                                                         for o in self.found[i].options)
+                          for i in self.selected if i in self.found) or 'none'
         if st['state'] == 'ready' and not mods_changed:
             self.head.config(text='Ready to play')
             self.info.config(text=f'Your game data is converted (mods: {names}). Press Play (or start Dpr.exe yourself). '
@@ -222,7 +294,7 @@ class App:
             return
         try:
             data = install.find_dump(dump)
-            modlib.choose(self.found, self.selected)
+            modlib.choose(self.found, self.selected, self.options)
         except install.DumpError as e:
             messagebox.showerror(TITLE, str(e))
             return
@@ -234,14 +306,14 @@ class App:
             w.state(['disabled'])
         self.dump_entry.state(['disabled'])
         self.head.config(text='Converting...')
-        self.worker = threading.Thread(target=self.work, args=(data, list(self.selected)), daemon=True)
+        self.worker = threading.Thread(target=self.work, args=(data, list(self.selected), self.picks_now()), daemon=True)
         self.worker.start()
 
-    def work(self, data, mods):
+    def work(self, data, mods, picks):
         try:
             r = install.run(self.paths.root, data, None,
                             lambda stage, done, total: self.q.put(('progress', stage, done, total)),
-                            lambda text: self.q.put(('log', text)), mods=mods)
+                            lambda text: self.q.put(('log', text)), mods=mods, options=picks)
             self.q.put(('done', r))
         except (install.DumpError, install.ConvertError) as e:
             self.q.put(('error', str(e)))

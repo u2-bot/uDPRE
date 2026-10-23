@@ -12,6 +12,12 @@ A mod pack is a folder with udpre_mod.json (format 1):
   optional "dump": {romfs path: dump path} (a mod file byte-identical to another dump file, taken from the dump) and optional
   "copy": {romfs path: romfs path} (a file that is a copy of another one of the stack below, e.g. a translation's opening
   movie = the base mod's). Later layers of one pack override earlier ones.
+Format 2 adds sub-options: "options": [{"id", "name", "default": choice id, "choices": [{"id", "name"}, ...]}] - each option
+is one exclusive choice the player makes under the pack's own tick (e.g. a mod shipped in several variants) - and a layer's
+optional "option": {option id: choice id or [choice ids]} (the layer counts only while that choice is picked). The picks live
+in the config as {pack id: {option id: choice id}}; an option without a pick uses its default. Format 2 also adds
+"min_versions": {pack id: version} - while that pack is on it must be at least this version (e.g. a pack whose file only a
+newer Luminescent player reads).
 Switch files go through the same conversion as the dump, so the pack's bundles and the dump's keep pointing at each other by
 the Switch path IDs.
 A player's download is found anywhere under the mods folder (any folder holding romfs/Data whose key file has the listed
@@ -25,7 +31,8 @@ import hashlib
 import json
 import os
 
-FORMAT = 1
+FORMAT = 2                  # the newest pack format this uDPRE reads (1 = no sub-options)
+FORMATS = (1, 2)
 MANIFEST = 'udpre_mod.json'
 RAW_ORDER = 1000
 AA = 'StreamingAssets/AssetAssistant'
@@ -65,6 +72,32 @@ class Mod:
         self.sources = dict(data.get('sources', {}))
         self.source_paths = {}          # source id -> romfs/Data folder of the player's download (found by discover)
         self._lists = {}
+        self.options = list(data.get('options', []))
+        self.choice = {o['id']: o['default'] for o in self.options}     # the player's picks (set by choose)
+        self.min_versions = dict(data.get('min_versions', {}))
+
+    def option(self, oid):
+        return next((o for o in self.options if o['id'] == oid), None)
+
+    def choice_name(self, oid):
+        o = self.option(oid)
+        return next((c['name'] for c in o['choices'] if c['id'] == self.choice.get(oid)), self.choice.get(oid))
+
+    def set_choice(self, picks):
+        """picks {option id: choice id} (unknown options / choices are reported) -> self.choice with defaults filled in."""
+        bad = []
+        choice = {o['id']: o['default'] for o in self.options}
+        for oid, cid in (picks or {}).items():
+            o = self.option(oid)
+            if o is None:
+                bad.append(f'{self.name} has no option "{oid}"')
+            elif not any(c['id'] == cid for c in o['choices']):
+                bad.append(f'{self.name}: "{cid}" is not a choice of {o["name"]} '
+                           f'({", ".join(c["id"] for c in o["choices"])})')
+            else:
+                choice[oid] = cid
+        self.choice = choice
+        return bad
 
     def source_list(self, sid):
         """{romfs path: [size, sha1]} of the files the pack takes from download sid."""
@@ -80,7 +113,9 @@ class Mod:
         """-> [(kind, folder or source id, spec)] of the layers that count with these mods on."""
         out = []
         for spec in self.layers:
-            if all(w in enabled for w in spec.get('when', [])) and not any(u in enabled for u in spec.get('unless', [])):
+            if all(w in enabled for w in spec.get('when', [])) and not any(u in enabled for u in spec.get('unless', [])) \
+                    and all(self.choice.get(oid) in ([v] if isinstance(v, str) else v)
+                            for oid, v in (spec.get('option') or {}).items()):
                 kind = next(k for k in KINDS if k in spec)
                 out.append((kind, spec[kind], spec))
         return out
@@ -118,11 +153,21 @@ def _has_exefs(folder):
 def load_manifest(path):
     with open(os.path.join(path, MANIFEST), encoding='utf-8') as f:
         d = json.load(f)
-    if d.get('format') != FORMAT:
-        raise ModError(f'{os.path.basename(path)}: mod pack format {d.get("format")}, this uDPRE reads format {FORMAT} - '
-                       f'get the uDPRE release the pack was made for')
+    if d.get('format') not in FORMATS:
+        raise ModError(f'{os.path.basename(path)}: mod pack format {d.get("format")}, this uDPRE reads formats '
+                       f'{", ".join(map(str, FORMATS))} - get the uDPRE release the pack was made for')
     if not d.get('id'):
         raise ModError(f'{os.path.basename(path)}: {MANIFEST} has no id')
+    opts = {}
+    for o in d.get('options', []):
+        ids = [c.get('id') for c in o.get('choices', [])]
+        if not o.get('id') or o['id'] in opts or not ids or len(set(ids)) != len(ids) or o.get('default') not in ids:
+            raise ModError(f'{d["id"]}: option {o.get("id")} is incomplete (id, choices with ids, a default choice)')
+        opts[o['id']] = set(ids)
+    for spec in d.get('layers', []):
+        for oid, v in (spec.get('option') or {}).items():
+            if oid not in opts or not set([v] if isinstance(v, str) else v) <= opts[oid]:
+                raise ModError(f'{d["id"]}: a layer names option {oid} = {v}, which the pack does not describe')
     for sid, s in d.get('sources', {}).items():
         if not os.path.isfile(os.path.join(path, s.get('list', ''))) or not s.get('key'):
             raise ModError(f'{d["id"]}: the file list of source {sid} is missing - the pack is incomplete')
@@ -219,8 +264,18 @@ def source_text(m, sid):
     return f'{m.name} needs your own copy of {s.get("name", sid)}: {s.get("where", "")}'.rstrip(': ')
 
 
-def choose(found, enabled_ids):
-    """Enabled ids -> the mods in layer order (bottom first). Raises ModError naming every problem."""
+def version_key(v):
+    """'1.2.4' -> (1, 2, 4); non-numeric parts sort as 0 ('2.2F-rev1' -> (2, 2, 0))."""
+    out = []
+    for part in str(v).replace('-', '.').split('.'):
+        digits = ''.join(ch for ch in part if ch.isdigit()) if part[:1].isdigit() else ''
+        out.append(int(digits) if digits else 0)
+    return tuple(out)
+
+
+def choose(found, enabled_ids, options=None):
+    """Enabled ids (+ options = {pack id: {option id: choice id}}, the picks under each pack's tick) -> the mods in layer
+    order (bottom first), each with its choice set. Raises ModError naming every problem."""
     bad = []
     chosen = []
     on = set(enabled_ids)
@@ -229,6 +284,7 @@ def choose(found, enabled_ids):
             bad.append(f'mod "{i}" is not in the mods folder')
             continue
         chosen.append(found[i])
+        bad += found[i].set_choice((options or {}).get(i))
     pairs = set()
     for m in chosen:
         for r in m.requires:
@@ -238,6 +294,10 @@ def choose(found, enabled_ids):
             if c in on and frozenset((m.id, c)) not in pairs:
                 pairs.add(frozenset((m.id, c)))
                 bad.append(f'{m.name} cannot be used together with {found[c].name if c in found else c}')
+        for v_id, least in m.min_versions.items():
+            other = found.get(v_id)
+            if v_id in on and other is not None and version_key(other.version) < version_key(least):
+                bad.append(f'{m.name} needs {other.name} {least} or newer (this one is {other.version or "unversioned"})')
         for sid in m.missing_sources():
             bad.append(source_text(m, sid))
     if bad:
@@ -246,9 +306,16 @@ def choose(found, enabled_ids):
 
 
 def signature(chosen):
-    """What a conversion was made with: per mod id, version and the layers it used (they change with the other mods)."""
+    """What a conversion was made with: per mod id, version and the layers it used (they change with the other mods and the
+    picks), + the picks of a pack with sub-options."""
     on = {m.id for m in chosen}
-    return [[m.id, m.version, [f'{kind}:{d}' for kind, d, _ in m.active_layers(on)]] for m in chosen]
+    return [[m.id, m.version, [f'{kind}:{d}' for kind, d, _ in m.active_layers(on)]] + ([dict(m.choice)] if m.options else [])
+            for m in chosen]
+
+
+def picks(chosen):
+    """{pack id: {option id: choice id}} of the chosen packs that have sub-options (what the config keeps)."""
+    return {m.id: dict(m.choice) for m in chosen if m.options}
 
 
 def player_mod(chosen):

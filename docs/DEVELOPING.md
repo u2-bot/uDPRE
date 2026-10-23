@@ -113,15 +113,18 @@ other dangles. Measured on `Dpr/shaders`: 63 of 63 shaders have other IDs. Copyi
 leaves 31,623 of the 45,169 material shader references pointing at nothing (`release/check_refs.py --shaders`), and the
 game draws those materials pink. So mods go through the converter in Switch form, with the dump.
 
-**A pack** is a folder in `mods/` with `udpre_mod.json` (format 1, read by `converter/udpre/mods.py`):
+**A pack** is a folder in `mods/` with `udpre_mod.json` (format 1 or 2, read by `converter/udpre/mods.py`; format 2 = a pack
+that uses `options` or `min_versions`, which uDPRE 0.2.0 refuses instead of misreading):
 
 | key | meaning |
 |---|---|
 | `id`, `name`, `version`, `description` | shown in the window; `id` is what `--mods` and the other packs name |
-| `order` | layer position, higher = on top (Luminescent 10, Easy-Mode 20, Dechibified 30, No Balance 40, FR / Castellano / Latam / IT 50, PT-BR 60) |
+| `order` | layer position, higher = on top (Luminescent 10, Shiny Icons 15, Heal Animation 16, Increased Shiny Odds 17, Easy-Mode 20, Dechibified 30, No Balance 40, FR / Castellano / Latam / IT 50, Darker UI 55, PT-BR 60) |
 | `requires`, `conflicts` | ids; the window turns required packs on and conflicting ones off |
+| `options` (format 2) | sub-options under the pack's own tick: `[{"id", "name", "default", "choices": [{"id", "name"}]}]`, one exclusive pick per option (e.g. a mod released in several variants). The window shows them as radio buttons under a ticked pack; the console takes `--options PACK.OPTION=CHOICE`. Picks are kept in the config as `options` = `{pack: {option: choice}}` and stay remembered while the pack is off; an option never picked uses its default. A different pick changes the pack's active layers, so only the files of those layers are made again |
+| `min_versions` (format 2) | `{pack id: version}`: while that pack is on, it must be at least this version (a pack whose file only a newer player of another pack reads) |
 | `sources` | downloads the PLAYER brings (a mod we do not redistribute): `{ID: {"name", "where", "list", "key"}}`; `list` = `sources/ID.json` = `{romfs path: [size, sha1]}` of every file the pack takes from it, `key` = the path that identifies it |
-| `layers` | `{"romfs": DIR}` = Switch files with their `romfs/Data` paths, converted like the dump; `{"source": ID}` = the listed files of the player's own download; `{"files": DIR}` = Windows files with their `Dpr_Data` paths, copied (hard-linked when the drive allows). Optional `when` / `unless` (ids) choose variants (the Dechibified version of a translation ...); later layers of a pack win. Optional `dump` = `{romfs path: dump path}`: a mod file byte-identical to another dump file is taken from the dump instead of shipped. Optional `copy` = `{romfs path: romfs path}`: a file that is a copy of another one of the stack below (a translation's opening = Luminescent's) |
+| `layers` | `{"romfs": DIR}` = Switch files with their `romfs/Data` paths, converted like the dump; `{"source": ID}` = the listed files of the player's own download; `{"files": DIR}` = Windows files with their `Dpr_Data` paths, copied (hard-linked when the drive allows). Optional `when` / `unless` (ids) choose variants (the Dechibified version of a translation ...); optional `option` = `{option id: choice id or [choice ids]}` (format 2) makes a layer count only while that choice is picked; later layers of a pack win. Optional `dump` = `{romfs path: dump path}`: a mod file byte-identical to another dump file is taken from the dump instead of shipped. Optional `copy` = `{romfs path: romfs path}`: a file that is a copy of another one of the stack below (a translation's opening = Luminescent's) |
 | `player` | folder of a player profile: `profile.json` (`id`, `files`), the code files at their root-relative paths (`GameAssembly.dll`, `global-metadata.dat`, `app.info`, the renumbered `globalgamemanagers.assets`), `udpre/base/globalgamemanagers`, `udpre/shaders.pack` |
 
 **The Luminescent pack ships none of Luminescent's files.** It holds our port of Lumi's game code (the console mod's

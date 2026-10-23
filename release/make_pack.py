@@ -3,8 +3,11 @@
   py -3.13 -I release/make_pack.py SPEC.json OUT_DIR --dump SWITCH_DATA [--census SWITCH_CENSUS.jsonl]
                                    [--forbid DIR]...
 SPEC.json:
-  {"manifest": {"id", "name", "version", "author", "url", "order", "requires", "conflicts", "description"},
-   "layers": [{"dir": "romfs", "kind": "romfs" | "files", "when": [...], "unless": [...], "copy": {REL: REL},
+  {"manifest": {"id", "name", "version", "author", "url", "order", "requires", "conflicts", "description",
+                "options": [{"id", "name", "default", "choices": [{"id", "name"}]}], "min_versions": {ID: VERSION}
+                (both optional -> pack format 2)},
+   "layers": [{"dir": "romfs", "kind": "romfs" | "files", "when": [...], "unless": [...], "option": {OPTION: CHOICE},
+               "copy": {REL: REL},
                "sources": [{"tree": DIR, "include": [glob...], "exclude": [glob...]} | {"file": PATH, "as": REL}]}
               | {"kind": "source", "source": ID, "name": TEXT, "where": TEXT, "key": REL, "sources": [...as above...]}],
    "player": {"id": "lumi", "build": PLAYER_DIR, "overlays": [MOD_ROMFS_DATA...]}}          (player optional)
@@ -157,8 +160,12 @@ def main():
         sys.exit(f'{out} is not empty - give a new folder')
     os.makedirs(out, exist_ok=True)
     report = []
-    manifest = {'format': 1}
+    # format 2 = sub-options / minimum versions; a pack without them stays format 1 (readable by uDPRE 0.2.0 too)
+    f2 = [k for k in ('options', 'min_versions') if spec['manifest'].get(k)]
+    manifest = {'format': 2 if f2 else 1}
     manifest.update({k: spec['manifest'][k] for k in MANIFEST_KEYS if k in spec['manifest']})
+    for k in f2:
+        manifest[k] = spec['manifest'][k]
     manifest['layers'] = []
     dump_twins = Twins(dump)
     dump_twin = dump_twins.twin
@@ -190,7 +197,7 @@ def main():
             size += os.path.getsize(src)
         os.makedirs(os.path.join(out, layer['dir']), exist_ok=True)
         entry = {layer['kind']: layer['dir']}
-        for k in ('when', 'unless'):
+        for k in ('when', 'unless', 'option'):
             if layer.get(k):
                 entry[k] = layer[k]
         if aliases:
@@ -199,7 +206,8 @@ def main():
             entry['copy'] = layer['copy']
         manifest['layers'].append(entry)
         report.append(f'layer {layer["dir"]} ({layer["kind"]}{", when " + ",".join(layer["when"]) if layer.get("when") else ""}'
-                      f'{", unless " + ",".join(layer["unless"]) if layer.get("unless") else ""}): {n} files, '
+                      f'{", unless " + ",".join(layer["unless"]) if layer.get("unless") else ""}'
+                      f'{", option " + json.dumps(layer["option"]) if layer.get("option") else ""}): {n} files, '
                       f'{size / 2**20:.1f} MiB; {len(dropped)} left out as byte-identical to the dump; {len(aliases)} taken '
                       f'from another dump file with the same bytes')
         report += [f'  left out: {r}' for r in dropped[:50]]
