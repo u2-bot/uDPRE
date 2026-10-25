@@ -39,6 +39,7 @@ def main():
             '--contents-directory', 'udpre_runtime', '--distpath', dist, '--workpath', os.path.join(work, 'pyinstaller'),
             '--specpath', os.path.join(work, 'spec'), '--paths', os.path.join(REPO, 'converter'),
             '--collect-all', 'UnityPy', '--collect-all', 'texture2ddecoder', '--hidden-import', 'udpre.gui',
+            '--collect-submodules', 'udpre',            # the Studio's pages are imported by name (importlib)
             '--exclude-module', 'av', '--exclude-module', 'matplotlib', '--exclude-module', 'IPython',
             '--exclude-module', 'pytest', '--exclude-module', 'setuptools',
             os.path.join(REPO, 'converter', 'uDPRE.py')]

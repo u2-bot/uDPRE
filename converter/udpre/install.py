@@ -36,7 +36,8 @@ FINGERPRINTS = [
 # which looks for them under GeneratedSoundBanks/Windows - mods.out_rel moves them)
 COPY_TREES = [modlib.AUDIO_SW, 'StreamingAssets/Movie']
 # Switch files a mod layer may carry outside the bundles and the player files: copied byte for byte
-COPY_PREFIXES = (modlib.AA + '/Dpr.bin', modlib.AUDIO_WIN + '/', 'StreamingAssets/Movie/')
+# ExtraData/ = JSON data an overhaul mod's code reads (copied for a player that reads it)
+COPY_PREFIXES = (modlib.AA + '/Dpr.bin', modlib.AUDIO_WIN + '/', 'StreamingAssets/Movie/', 'ExtraData/')
 # measured on the whole v1.3.0 dump: 3.83 GiB of Switch bundles -> 5.09 GiB (ASTC decoded to RGBA32, LZ4) = x1.33
 BUNDLE_GROWTH = 1.45
 MARK = 'StreamingAssets/AssetAssistant/Dpr.bin'
@@ -49,9 +50,15 @@ class DumpError(Exception):
 def find_dump(selected):
     """-> the dump's romfs Data folder under / around what the user picked (the dump folder, romfs, romfs/Data, a title-id
     folder above them ...). Raises DumpError with a message a player can act on."""
+    from . import advice
     sel = os.path.abspath(selected)
     if not os.path.isdir(sel):
-        raise DumpError(f'{sel} is not a folder.')
+        raise DumpError(advice.text(f'The folder {sel} does not exist (it was moved, renamed, or is on a drive that is not '
+                                    f'connected)', ['Press Browse... and pick the folder of your dump where it is now']))
+    if os.path.isfile(os.path.join(sel, 'Dpr.exe')) and os.path.isdir(os.path.join(sel, 'udpre')):
+        raise DumpError(advice.text(f'{sel} is the uDPRE folder, not your game dump',
+                                    ['Press Browse... and pick the folder you extracted your Brilliant Diamond dump to '
+                                     '(the one that holds "romfs")']))
     cands = [sel, os.path.join(sel, 'Data'), os.path.join(sel, 'romfs', 'Data'), os.path.dirname(sel)]
     for root, dirs, _ in os.walk(sel):
         depth = root[len(sel):].count(os.sep)
@@ -63,8 +70,16 @@ def find_dump(selected):
     for c in cands:
         if os.path.isfile(os.path.join(c, *MARK.split('/'))) and os.path.isfile(os.path.join(c, 'globalgamemanagers')):
             return c
-    raise DumpError(f'No BDSP game files found in {sel}. Pick the folder you extracted the game to (it holds "romfs", '
-                    f'with "Data" inside).')
+    looks_mod = any(os.path.isdir(os.path.join(c, 'StreamingAssets')) for c in cands) or \
+        any(d.lower() == 'exefs' for d in os.listdir(sel))
+    steps = ['Pick the folder you extracted your own Pokemon Brilliant Diamond dump to: it holds a folder "romfs", with '
+             '"Data" inside, and "Data" holds "StreamingAssets" and "globalgamemanagers"',
+             'If you only have the game as one file (.nsp / .xci), extract its romfs first with your dumping tool - the '
+             'base game together with the v1.3.0 update']
+    if looks_mod:
+        steps.insert(0, 'This looks like a mod, not the game. Mods go into the mods folder of uDPRE; here you pick the '
+                        'game itself')
+    raise DumpError(advice.text(f'{sel} does not hold the game files of Pokemon Brilliant Diamond', steps))
 
 
 def sha1(path):
@@ -75,26 +90,60 @@ def sha1(path):
     return h.hexdigest()
 
 
-def verify_dump(data, bundles):
-    """-> list of problems (empty = a complete Brilliant Diamond v1.3.0 romfs)."""
-    bad = []
+def verify_dump(data, bundles, packs=None):
+    """-> list of problems, each a text a player can act on (empty = a complete Brilliant Diamond v1.3.0 romfs). packs =
+    the mod packs found ({id: Mod}): a dump with a pack's download copied into it is named as such."""
+    from . import advice
+    redump = ('Extract your dump again into a NEW, empty folder: the base game AND the v1.3.0 update, extracted together '
+              '(the update\'s files over the base game\'s), then pick that folder')
+    wrong = []
     for rel, want, size in FINGERPRINTS:
         p = os.path.join(data, *rel.split('/'))
         if not os.path.isfile(p):
-            bad.append(f'{rel} is missing')
-        elif os.path.getsize(p) != size or sha1(p) != want:
-            bad.append(f'{rel} is not the Brilliant Diamond v1.3.0 file. Dump the game WITH the v1.3.0 update applied '
-                       f'(base game + update, extracted together).')
-    if bad:
-        return bad
+            return [advice.text(f'Your dump has no {rel}: it is incomplete', [redump])]
+        if os.path.getsize(p) != size or sha1(p) != want:
+            wrong.append(rel)
+    if wrong:
+        # whose file is it? a mod copied over the dump (its pack lists the file), else another game / version
+        for m in (packs or {}).values():
+            for sid in m.sources:
+                try:
+                    lst = m.source_list(sid)
+                except (OSError, ValueError):
+                    continue
+                for rel in wrong:
+                    p = os.path.join(data, *rel.split('/'))
+                    if rel in lst and os.path.getsize(p) == lst[rel][0] and sha1(p) == lst[rel][1]:
+                        name = m.sources[sid].get('name', sid)
+                        if not modlib._is_game_dump(data):
+                            return [advice.text(
+                                f'{data} is the {name} mod download, not your game dump',
+                                ['Press Browse... and pick the folder of your own Brilliant Diamond dump (the whole '
+                                 'game, about 8 GB)', f'Keep {name} in the mods folder of uDPRE: the {m.name} pack uses '
+                                                      f'it from there'])]
+                        return [advice.text(
+                            f'Your dump has the files of {name} copied into it ({rel} is the mod\'s). uDPRE needs the game '
+                            f'exactly as dumped, with mods kept apart', [redump,
+                                                                         f'Keep {name} as its own folder in the mods '
+                                                                         f'folder of uDPRE (the {m.name} pack uses it '
+                                                                         f'from there)'])]
+        if wrong == [MARK]:
+            return [advice.text(f'Your dump\'s {MARK} is not the one of Brilliant Diamond v1.3.0: a mod was copied over '
+                                f'the dump', [redump, 'Put mods into the mods folder of uDPRE instead of into the dump'])]
+        return [advice.text('This is not Pokemon Brilliant Diamond v1.3.0: it is Shining Pearl, an older version of the '
+                            'game (without the v1.3.0 update), or a dump with mod files copied into it',
+                            ['Dump Pokemon Brilliant Diamond (uDPRE does not work with Shining Pearl) together with its '
+                             'v1.3.0 update', redump])]
+    bad = []
     aa = os.path.join(data, 'StreamingAssets', 'AssetAssistant')
     missing = [b for b in bundles if not os.path.isfile(os.path.join(aa, *b.split('/')))]
     if missing:
-        bad.append(f'{len(missing)} of {len(bundles)} game files are missing (e.g. {missing[0]}) - the extraction is '
-                   f'incomplete.')
+        bad.append(advice.text(f'{len(missing)} of the {len(bundles)} game files are missing from your dump (for example '
+                               f'{missing[0]}): the extraction stopped before the end, or files were deleted',
+                               [redump, 'Check that the drive has room for the whole game (about 8 GB)']))
     for t in COPY_TREES:
         if not os.path.isdir(os.path.join(data, *t.split('/'))):
-            bad.append(f'{t} is missing - the extraction is incomplete.')
+            bad.append(advice.text(f'Your dump has no {t} folder: it is incomplete', [redump]))
     return bad
 
 
@@ -156,9 +205,11 @@ class Setup:
     picked = {source id: folder} downloads the player pointed at outside the mods folder; options = {pack id: {option id:
     choice id}} the picks under the packs' ticks."""
 
-    def __init__(self, p, mod_ids, picked=None, options=None):
+    def __init__(self, p, mod_ids, picked=None, options=None, overrides=None):
         self.found, self.problems = modlib.discover(p.mods, picked)
         self.chosen = modlib.choose(self.found, mod_ids, options)
+        # {player path: file} put in place instead of the player's own (the editor's metadata with the type chart edits)
+        self.overrides = dict(overrides or {})
         self.player_mod = modlib.player_mod(self.chosen)
         if self.player_mod:
             self.profile, self.player_dir = modlib.load_profile(self.player_mod)
@@ -189,18 +240,45 @@ def pack_digests(p, pack):
     return digests
 
 
-def fingerprint(p, setup):
-    """What the converted data was made against: player base globalgamemanagers, shader pack per container, mod set."""
+def fingerprint(p, setup, edits=None):
+    """What the converted data was made against: player base globalgamemanagers, shader pack per container, mod set, and
+    the edit project's digest when the edits are on."""
     return {'base_ggm': sha1(setup.base_ggm), 'pack': pack_digests(p, setup.pack), 'player': setup.player_id,
-            'mods': modlib.signature(setup.chosen)}
+            'mods': modlib.signature(setup.chosen), 'edits': edits,
+            'merge': load_config(p).get('merge_choices') if any(m.raw for m in setup.chosen) else None}
+
+
+def edits_digest(p, cfg):
+    """the digest of edits/project.json when the conversion uses the edits (config edits_on), else None"""
+    if not cfg.get('edits_on'):
+        return None
+    from .edit import build as editbuild
+    from .edit.project import Project
+    try:
+        return Project(editbuild.project_path(p.root)).digest()
+    except Exception as e:      # a damaged project: status() says so, the conversion reports the error
+        return f'unreadable: {e}'
+
+
+def kept_overrides(cfg):
+    """{player path: file} the last build made (edited metadata), while the edits are on"""
+    if not cfg.get('edits_on'):
+        return {}
+    return {rel: f for rel, f in ((cfg.get('edits') or {}).get('overrides') or {}).items() if os.path.isfile(f)}
 
 
 def expected_player(p, setup):
-    """{root-relative player file: sha1 it must have} for the chosen player (ours, or a pack's profile)."""
+    """{root-relative player file: sha1 it must have} for the chosen player (ours, or a pack's profile), with the editor's
+    overrides."""
     vanilla = _load_json(p.player_files, {}).get('files', {})
     if setup.profile is None:
-        return dict(vanilla)
-    return {rel: sha1(os.path.join(setup.player_dir, *rel.split('/'))) for rel in setup.profile['files']}
+        want = dict(vanilla)
+    else:
+        want = {rel: sha1(os.path.join(setup.player_dir, *rel.split('/'))) for rel in setup.profile['files']}
+    for rel, f in setup.overrides.items():
+        if rel in want:
+            want[rel] = sha1(f)
+    return want
 
 
 def status(p):
@@ -216,11 +294,11 @@ def status(p):
                     'mods': mod_ids, 'options': opts}
         return {'state': 'convert', 'stale': [], 'reason': 'not converted yet', 'mods': mod_ids, 'options': opts}
     try:
-        setup = Setup(p, mod_ids, cfg.get('sources'), opts)
+        setup = Setup(p, mod_ids, cfg.get('sources'), opts, kept_overrides(cfg))
     except modlib.ModError as e:
         return {'state': 'refresh', 'stale': [], 'reason': f'the mod choice cannot be used: {e}', 'mods': mod_ids,
                 'options': opts}
-    old, now = cfg.get('fingerprint') or {}, fingerprint(p, setup)
+    old, now = cfg.get('fingerprint') or {}, fingerprint(p, setup, edits_digest(p, cfg))
     stale = sorted(c for c, d in now['pack'].items() if (old.get('pack') or {}).get(c) != d)
     reasons = []
     if stale:
@@ -229,6 +307,10 @@ def status(p):
         reasons.append('a new player')
     if old.get('mods', []) != now['mods']:
         reasons.append('the mods')
+    if old.get('edits') != now['edits']:
+        reasons.append('your edits')
+    if old.get('merge') != now['merge']:
+        reasons.append('the merge choices')
     wrong = [rel for rel, h in expected_player(p, setup).items()
              if not os.path.isfile(os.path.join(p.root, *rel.split('/'))) or sha1(os.path.join(p.root, *rel.split('/'))) != h]
     if wrong:
@@ -351,7 +433,9 @@ def apply_player(p, setup, cfg, log):
     kept in udpre/players/vanilla before a pack's profile replaces them, and come back from there."""
     vanilla = _load_json(p.player_files, {}).get('files', {})
     if setup.profile is not None and not vanilla:
-        raise ConvertError('udpre/player_files.json is missing - unzip the uDPRE release over this folder again')
+        from . import advice
+        raise ConvertError(advice.text('This uDPRE folder is incomplete (udpre/player_files.json is missing)',
+                                       [advice.unzip_udpre_again()]))
     for rel, h in vanilla.items():
         cur = os.path.join(p.root, *rel.split('/'))
         bak = os.path.join(p.vanilla_player, *rel.split('/'))
@@ -363,17 +447,26 @@ def apply_player(p, setup, cfg, log):
         cur = os.path.join(p.root, *rel.split('/'))
         if os.path.isfile(cur) and sha1(cur) == h:
             continue
-        if setup.profile is not None:
+        if rel in setup.overrides:
+            src = setup.overrides[rel]
+        elif setup.profile is not None:
             src = os.path.join(setup.player_dir, *rel.split('/'))
         else:
             src = os.path.join(p.vanilla_player, *rel.split('/'))
             if not os.path.isfile(src) or sha1(src) != h:
-                raise ConvertError(f'{rel} is not the one of this uDPRE release and no copy of it is kept - unzip the '
-                                   f'uDPRE release over this folder again')
+                from . import advice
+                raise ConvertError(advice.text(f'The game file {rel} is not the one of this uDPRE release (a patch or '
+                                               f'another build was copied over the folder), and uDPRE has no copy of the '
+                                               f'right one', [advice.unzip_udpre_again(),
+                                                              'Do not copy patches made for other PC builds into a '
+                                                              'uDPRE folder: use uDPRE mod packs']))
         try:
             place(src, cur)
         except PermissionError:
-            raise ConvertError(f'{rel} is in use - close the game and convert again')
+            from . import advice
+            raise ConvertError(advice.text(f'{rel} is in use, so uDPRE cannot replace it',
+                                           ['Close the game (Dpr.exe) - check the taskbar and Task Manager - then '
+                                            'press Convert again']))
         changed += 1
     for rel in cfg.get('player_extra', []):
         f = os.path.join(p.root, *rel.split('/'))
@@ -383,25 +476,36 @@ def apply_player(p, setup, cfg, log):
     log(f'player: {setup.player_id} ({changed} files put in place)')
 
 
-def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=None, options=None):
+def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=None, options=None, edits=None):
     """Converts the dump (+ the chosen mods) into the uDPRE folder `root` - everything on a first run, later only what
     changed (status()). dump_selected None = the dump of the last conversion; mods None = the mods chosen last time (a list
     of pack ids); options = picks under the packs' ticks {pack id: {option id: choice id}}, laid over the picks kept from
-    last time. progress(stage, done, total) / log(text). Returns a summary dict; raises DumpError / ConvertError."""
+    last time; edits None = use the edit project as last time, True / False = use it / not. progress(stage, done, total) /
+    log(text). Returns a summary dict; raises DumpError / ConvertError."""
+    from . import advice
     p = Paths(root)
     cfg = load_config(p)
     if dump_selected is None:
         dump_selected = cfg.get('dump')
         if not dump_selected:
-            raise DumpError('Pick your dump folder first.')
+            raise DumpError(advice.text('uDPRE does not know your dump yet',
+                                        ['Press Browse... and pick the folder of your Brilliant Diamond dump, then '
+                                         'Convert (from the console: uDPRE.exe convert "D:\\Dumps\\BDSP")']))
         if not os.path.isdir(dump_selected):
-            raise DumpError(f'The dump used last time is gone ({dump_selected}). Pick your dump folder again.')
+            raise DumpError(advice.text(f'The dump you used last time is not there any more ({dump_selected}): it was '
+                                        f'moved, renamed, or is on a drive that is not connected',
+                                        ['Connect the drive, or press Browse... and pick the dump where it is now, '
+                                         'then Convert']))
     data = find_dump(dump_selected)
     bundles = p.bundle_list()
     log(f'dump: {data}')
-    problems = verify_dump(data, bundles)
+    try:
+        packs_found = modlib.discover(p.mods, cfg.get('sources'))[0]
+    except OSError:
+        packs_found = {}
+    problems = verify_dump(data, bundles, packs_found)
     if problems:
-        raise DumpError('\n'.join(problems))
+        raise DumpError('\n\n'.join(problems))
     mod_ids = list(cfg.get('mods', []) if mods is None else mods)
     opts = {k: dict(v) for k, v in cfg.get('options', {}).items()}
     for k, v in (options or {}).items():
@@ -411,14 +515,63 @@ def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=
         stack = modlib.Stack(data, setup.chosen, bundles)
         shaders_src = stack.shaders_bundle()
     except modlib.ModError as e:
-        raise DumpError(str(e))
+        raise DumpError(str(e))     # already a text with what to do (mods.py / advice.py)
     for m in setup.chosen:
         log(f'mod: {m.name} {m.version}' + ''.join(f'; {o["name"]}: {m.choice_name(o["id"])}' for o in m.options)
             + ''.join(f'; your {m.sources[s].get("name", s)}: {d}' for s, d in m.source_paths.items()))
     verify_sources(p, setup, progress)
-    odd = sorted(k for k, s in stack.copies().items() if s.kind == 'switch' and not k.startswith(COPY_PREFIXES))
-    if odd:
-        raise DumpError(f'A mod changes files uDPRE cannot convert yet: {", ".join(odd[:5])}')
+    if any(m.raw for m in setup.chosen):
+        # console mods that bring a file another mod also brings: merged object by object (merge.py)
+        from . import merge
+        progress('merging console mods', 0, 1)
+        rep = merge.apply(stack, p.state, data, cfg.get('merge_choices'), log)
+        n_conf = sum(len(v['conflicts']) for v in rep.values())
+        if rep:
+            log(f'merged {len(rep)} files that console mods share with other mods ({n_conf} conflicts, '
+                f'udpre/state/merged/report.json)')
+        progress('merging console mods', 1, 1)
+    else:
+        from . import merge
+        merge.clear(p.state)        # no console mod: the merged files of an earlier choice are not needed
+    if edits is not None:
+        cfg['edits_on'] = bool(edits)
+    edit_digest = None
+    if cfg.get('edits_on'):
+        from .edit import build as editbuild
+        progress('your edits', 0, 1)
+        try:
+            built = editbuild.build(p, stack, setup, log)
+        except Exception as e:      # a project the current files cannot take: the conversion stops before changing anything
+            raise DumpError(advice.text(
+                'Your edits (Editor & Randomizer) could not be applied to the game files of this mod choice. Nothing was '
+                'changed', ['To play now without them: untick "Use my edits in the game" and press Apply',
+                            'To fix them: open Editor & Randomizer, Your edits page, and undo or remove the last changes, '
+                            'then tick "Use my edits" again and press Apply',
+                            'Edits made with other mods ticked can need those mods: tick the same mods as when you made '
+                            'them'], details=f'{type(e).__name__}: {e}'))
+        edit_digest = built.digest
+        if built.layer is not None:
+            stack = modlib.Stack(data, setup.chosen + [built.layer], bundles)
+        setup.overrides = dict(built.overrides)
+        cfg['edits'] = {'digest': built.digest, 'overrides': built.overrides, 'changed': built.changed,
+                        'skipped': len(built.warnings)}
+        progress('your edits', 1, 1)
+    else:
+        cfg.pop('edits', None)
+        from .edit import build as editbuild
+        editbuild.clear(p)
+    odd_src = {k: s for k, s in stack.copies().items() if s.kind == 'switch' and not k.startswith(COPY_PREFIXES)}
+    if odd_src:
+        names = {m.id: m for m in setup.chosen}
+        by_mod = {}
+        for k, s in sorted(odd_src.items()):
+            by_mod.setdefault(names[s.mod].name if s.mod in names else 'your dump', []).append(k)
+        raise DumpError(advice.text(
+            'A mod brings Switch files uDPRE cannot use on PC: ' +
+            '; '.join(f'{n} ({", ".join(v[:3])}{" ..." if len(v) > 3 else ""})' for n, v in by_mod.items()),
+            ['Untick that mod (or move its folder out of the mods folder) and press Apply',
+             'Files like these (game code, the Switch player\'s own files) only work on a console; a uDPRE pack of the '
+             'mod is needed to use it on PC']))
     old_fp = cfg.get('fingerprint') or {}
     st0 = status(p)
     if st0['state'] == 'refresh':
@@ -460,8 +613,12 @@ def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=
     need += 64 << 20
     free = shutil.disk_usage(p.root).free
     if free < need:
-        raise DumpError(f'Not enough free space on the drive of {p.root}: {free / 2**30:.1f} GB free, about '
-                        f'{need / 2**30:.1f} GB needed. Free some space (or move the uDPRE folder) and convert again.')
+        drive = os.path.splitdrive(p.root)[0] or p.root
+        raise DumpError(advice.text(
+            f'Not enough free space on drive {drive}: {free / 2**30:.1f} GB free, about {need / 2**30:.1f} GB needed for '
+            f'this conversion', [f'Free at least {(need - free) / 2**30 + 0.5:.1f} GB on {drive} (empty the Recycle Bin, '
+                                 f'delete or move big files), then press Convert again',
+                                 'Or move the whole uDPRE folder to a drive with more room and convert there']))
     ids = switch_shader_ids(shaders_src.path)
     t0 = time.time()
     errors = []
@@ -491,12 +648,54 @@ def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=
                         for key2, v in st.items():
                             totals[key2] = totals.get(key2, 0) + v
                     progress('bundles', k, total_n)
+    if errors:
+        # a mod's bundle that does not even load on its own (a damaged file the mod ships) is made from the layer below
+        from .merge import _loads
+        still = []
+        with open(p.done_log, 'a', encoding='utf-8', newline='\n') as dl:
+            for rel, err in errors:
+                s = want[rel][0]
+                lower = [x for x in stack.all_sources.get(modlib.AA + '/' + rel, []) if x is not s and x.kind == 'switch']
+                if s.mod is None or _loads(s.path) or not lower:
+                    still.append((rel, err))
+                    continue
+                below = lower[-1]
+                try:
+                    from . import bundle
+                    from .shaderpack import ShaderPack as _SP
+                    st = bundle.convert_bundle(below.path, os.path.join(p.aa_out, *rel.split('/')), rel, _SP(setup.pack),
+                                               ids, strict_streams=below.mod is None)
+                    # recorded under the mod file's own key: it is not tried again until the mod's file changes
+                    dl.write(f'{rel}\t{st.get("bytes", 0)}\t{want[rel][1]}\n')
+                    log(f'{rel}: the file {s.mod} brings is damaged (it does not load) - made from the layer below')
+                except Exception as e:
+                    still.append((rel, f'{err}\nlayer below: {type(e).__name__}: {e}'))
+        errors = still
     log(f'bundles: {time.time() - t0:.0f} s, {len(errors)} failed, totals {totals}')
     if errors:
-        with open(os.path.join(p.state, 'errors.txt'), 'w', encoding='utf-8') as f:
+        report = os.path.join(p.state, 'errors.txt')
+        with open(report, 'w', encoding='utf-8') as f:
             for rel, err in errors:
                 f.write(f'== {rel}\n{err}\n')
-        raise ConvertError(f'{len(errors)} bundles failed (details: {os.path.join(p.state, "errors.txt")}); run again to retry them')
+        names = {m.id: m.name for m in setup.chosen}
+        from_mods = {}
+        n_dump = 0
+        for rel, _err in errors:
+            s = want[rel][0]
+            if s.mod is None:
+                n_dump += 1
+            else:
+                from_mods.setdefault(names.get(s.mod, s.mod), []).append(rel)
+        steps = ['Press Convert again: only the files that failed are made again (a full disk or a busy PC can stop a '
+                 'few of them)']
+        for n, v in from_mods.items():
+            steps.append(f'{len(v)} of them come from {n}: if they fail again, that mod\'s files are damaged - download '
+                         f'it again and replace its folder, or untick it')
+        if n_dump:
+            steps.append(f'{n_dump} of them come from your dump: if they fail again, your dump is damaged - extract it '
+                         f'again into an empty folder and pick that folder')
+        steps.append(f'If nothing helps, report it with the file {report}')
+        raise ConvertError(advice.text(f'{len(errors)} of the game files could not be converted', steps))
     write_done_map(p, done_map(p))
     from . import player
     progress('player files', 0, 3)
@@ -515,7 +714,7 @@ def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=
         + (f', {copied["encoded"]} movies re-encoded to VP8' if copied['encoded'] else ''))
     cfg['complete_version'] = CONVERT_VERSION
     cfg['completed'] = time.strftime('%Y-%m-%d %H:%M:%S')
-    cfg['fingerprint'] = fingerprint(p, setup)
+    cfg['fingerprint'] = fingerprint(p, setup, edit_digest)
     save_config(p, cfg)
     return {'seconds': round(time.time() - t0), 'bundles': total_n, 'totals': totals, 'mods': setup.mod_ids,
             'player': setup.player_id}
@@ -554,10 +753,20 @@ def verify_sources(p, setup, progress):
                 progress('checking your mod downloads', k, total)
         if bad:
             _save_json(cache_path, cache)
+            from . import advice
             name = m.sources[sid].get('name', sid)
-            raise DumpError(f'Your copy of {name} ({root}) is incomplete or another version: {len(bad)} of the '
-                            f'{len(m.source_list(sid))} files the {m.name} pack needs are missing or differ '
-                            f'({"; ".join(bad[:3])}). Extract the original {name} download again (with 7-Zip).')
+            n_all = len(m.source_list(sid))
+            many = len(bad) > n_all // 10
+            raise DumpError(advice.text(
+                f'Your copy of {name} ({root}) is ' + ('another version of the mod' if many else 'incomplete or changed') +
+                f': {len(bad)} of the {n_all} files the {m.name} pack needs are missing or different (for example '
+                f'{"; ".join(bad[:2])})',
+                [f'Download {name} again {advice.get_from(m)}'.rstrip() + (f' - exactly {name}, for Brilliant Diamond'
+                                                                           if many else ''),
+                 f'Extract it with 7-Zip ({advice.SEVEN_ZIP}) into a NEW folder (Windows\' own zip tool and extractions '
+                 f'that stopped early leave files out), and do not change or add files in it',
+                 f'Replace the old folder with it (in the mods folder, or wherever "Find a mod download..." points), then '
+                 f'press Convert']))
     if jobs:
         _save_json(cache_path, cache)
 

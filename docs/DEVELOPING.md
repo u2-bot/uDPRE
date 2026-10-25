@@ -41,9 +41,10 @@ What the release side prepares so the dump's files fit our player (`release/make
   MonoManager and GraphicsSettings follow the new IDs.
 - **ScriptMapper** (Shader.Find's table) is pointed at the Switch resources.assets shaders by name.
 
-## Updates (players unzip a new release over their folder)
+## Updates (a new release over the player's folder)
 
-uDPRE has no auto-update. At the end of each conversion `udpre/state/config.json` records a fingerprint: the hash of
+A new release lands over the folder either from the player unzipping it or from uDPRE's own update (next section). At
+the end of each conversion `udpre/state/config.json` records a fingerprint: the hash of
 `udpre/base/globalgamemanagers` and a digest per container of `udpre/shaders.pack`. At every start `install.status()`
 compares it with the files now in the folder:
 
@@ -56,6 +57,41 @@ compares it with the files now in the folder:
 The window starts that refresh on its own with the dump of the last conversion, so after an update the player presses
 only Play. Rule: bump `CONVERT_VERSION` in `converter/udpre/__init__.py` whenever a change alters the bytes the converter
 writes for bundles.
+
+## Online packs and updates (`converter/udpre/online.py`, `online_ui.py`)
+
+The packs and uDPRE's own zip are hosted files (tags `catalog`, `parts`, `udpre`) that players reach through the relay:
+`GET <relay>/v1/file/<tag>/<name>` answers with a short-lived download link (302); downloads resume with HTTP Range. The
+relay address is `udpre/release.json` "relay" (`make_release.py --relay URL`);
+`udpre/config.json` "online_relay" or `UDPRE_RELAY` override it for tests.
+
+- **Catalogue** (`catalog/catalog.json`): `{"format", "index": <JSON text>, "sig"}`, Ed25519 over the index text
+  (`converter/udpre/ed25519.py`, pure Python, checked against RFC 8032). `online.PUBLIC_KEY` is the public half; the
+  private half never leaves the build machine.
+  A bad signature = nothing is downloaded. The index lists each pack's parts with size + SHA-256, and uDPRE's build
+  (`made` time, compared with the running release's).
+- **Parts**: per pack, one per top-level folder of 4 MiB or more (split by `crc32(path) % n` past 600 MiB), and `meta` for
+  the rest; the first matching rule wins (`online.part_of`). Each part = a deterministic `.tar.xz` named
+  `<id>-<part>-<tree[:16]>`, where tree = SHA-256 over sorted `path<TAB>size<TAB>sha256` lines. An unchanged part keeps its
+  name, so it is neither uploaded nor downloaded again.
+- **Install / update** (`online.install_item`): the new folder is built beside the old (`<pack>.udpre_new`): kept parts are
+  hard-linked from the old folder, new parts downloaded (verified by SHA-256, resumable `.part` files in
+  `udpre/state/online/downloads`) and unpacked with tarfile's `data` filter; every new part's tree must match the
+  catalogue; then the old folder moves to `udpre/state/online/previous/<id>` (one rollback) and the new one takes its
+  place. File hashes are cached by size + mtime + file id (`udpre/state/online/hashes.json`), so a check of an installed
+  pack reads only changed files; the file id matters because parts unpack with mtime 0 (a changed file of the same size
+  must not keep its old hash), and an install / rollback moves a folder's entries along with the folder.
+- **The window**: at start (unless "Update mods automatically" is off: config `online_auto`) the check runs before the
+  start-up refresh; a new uDPRE build comes first (frozen exe only: unpacked to `udpre/state/online/self`, then
+  `apply_update.cmd` waits for uDPRE to exit, robocopies the new files in and starts uDPRE again), then updates of
+  installed packs, then the usual refresh/convert of the changed files. No internet = a note, play on.
+- **Downloads packs take files from** (`sources`, e.g. Luminescent 2.2F): the client fetches them only when the catalogue
+  lists them and no copy is found.
+
+Publishing (build machine) packs every changed part, signs the catalogue, and uploads only the files the host lacks, the
+catalogue last. Checks (developer tools of the build machine): the real client against the relay's own code and a test
+double of the host: signature, install = byte-identical, part-only update, resume, damaged download, rollback, linked
+folder; screenshots of the window.
 
 ## Making a release
 
@@ -183,8 +219,127 @@ Measured (Luminescent 2.2F): 14,685 bundles; 3,135 Luminescent bundles verify ob
 references, 0 dangling; 2,230 dangling references in Luminescent's bundles, the same set on the Switch files (the mod's own:
 e.g. the corrupt `pm0487_12_00` it ships, left out of the pack so the dump's file serves the record).
 
+## Merging console mods (`converter/udpre/merge.py`)
+
+`mods.Stack` keeps every layer's source of a path (`all_sources`). When a console mod (a folder without a manifest) brings a
+file another mod also brings, `merge.apply` writes a merged Switch file to `udpre/state/merged/<path>` and points the stack
+at it (packs among themselves keep their own `when` / `unless` variants, which are made for each combination):
+
+- base = the dump's file, lower = what the packs (or the console mods under it) made, upper = the console mod's file;
+- Unity files (bundles, resources.assets, globalgamemanagers): per object (path id) - changed on one side only = taken from
+  that side; changed on both = a three-way merge of the type trees (dicts by key, lists element by element or by appended
+  rows), a value both changed differently = a conflict, the upper side wins unless `config.json` `merge_choices` says
+  `below` for that object; textures / meshes / sounds / fonts / shaders are decided whole; files without type trees (player
+  files) only whole objects; when one side added or removed objects its file gives the structure, when both did one file
+  is used whole (a `whole file` conflict row: upper unless `merge_choices` says `below`);
+- `Dpr.bin` per bundle record (`record <name>` picks); other files whole between two mods' files (`whole file` pick; the
+  first mod over the dump just replaces it);
+- a console mod file that does not load on its own is dropped (the lower layer's file is used); the converter does the same
+  for a damaged mod bundle that is not shared (`install.run`, recorded under the mod file's key).
+- **references**: a merged bundle must not make a reference dangle that does not dangle with the lower layer's files (a
+  console mod made for the unmodded game, merged over a mod that rebuilt a model, would). Every merged bundle and every
+  bundle depending on one (the catalog's dependency lists) is checked against its dependencies; a new dangling reference
+  sends the merged dependency that lost the object (and a merged file making it) back to the lower layer's file, until none
+  is left (`_reference_pass`, cached in `merged/refs.json`).
+The report (`merged/report.json`: per file the mods, conflicts, notes, `reverted`) feeds the window's **Merge conflicts...**
+list. Measured: Sky-Battlen't 3.0 (a vanilla console mod) over Luminescent + 7 add-ons: 1,721 shared files; first merge 31 s;
+1,698 merged per object / field, 20 structure fallbacks, 3 damaged mod files left out; the reference pass sends 24 back
+(the Mewtwo, Steelix, Wailord and Giratina models Luminescent rebuilt). Dangling references in those 1,719 bundles: Luminescent alone
+182, the console mod's files taken whole 1,093, merged 201 (the extra = the console mod's own AssetBundle objects the
+checker cannot read, also in "whole"); material shader references 0 dangling.
+
+## Editor & Randomizer (`converter/udpre/edit/`)
+
+| Module | What |
+|---|---|
+| `gamefiles.py` | the stack's Switch files opened for editing (UnityPy type trees by m_Name; raw files; new files) |
+| `game.py` | the tables with names and keys (personal rows, learnsets, evolutions, TMs, trainers, encounters, UG, ...) |
+| `text.py` | message sheets: label text <-> words, engine strWidth from the game font atlas |
+| `project.py` | the edit project = ordered operations, replay, keys, `describe` |
+| `build.py` | the build = the project replayed on the current stack -> `udpre/state/editor/{romfs,player}` |
+| `session.py` | the editor's working state (stack + project + game data with the project applied) |
+| `randomizer.py`, `analyzer.py`, `distributions.py` | every randomizer option, defaults from the data, distributions |
+| `metadata.py` | type chart + field default value edits of the player's global-metadata.dat |
+| `jsonconv.py`, `showdown.py` | JSON converter, Showdown team text |
+| `inserter.py`, `assets.py` | Pokemon Inserter; bundle copies with new CAB names + catalog records |
+| `export.py` | the edits as a console mod (LayeredFS) |
+| `formats/` | `nrbf.py` (Dpr.bin = .NET BinaryFormatter), `wwise.py` (sound banks v135), `il2cppmeta.py` (metadata v24) |
+| `ui/` | uDPRE Studio, the window (tkinter): `shell.py`, `page.py`, `kit.py`, `theme.py`, `widgets.py`, `pages/` |
+
+**The layer.** `install.run` (when `config.json` `edits_on`) replays `edits/project.json` on the stack it is about to
+convert and adds the files that came out different as the top-most layer (order 100000, above console mods); the edited
+player metadata goes in as a player override (`Setup.overrides`, `expected_player`, `apply_player`). The fingerprint holds
+the project's digest (`edits`), so `status()` asks for Apply after an edit. A file is rewritten only when its bytes change,
+so an unchanged project converts nothing again.
+
+**Operations** address rows by keys that mean the same in every mod's files (`[monsno, form]` for personal / learnset /
+evolution rows, `wazaNo`, item `no`, `zoneID`, TrainerPoke `ID` ...); a key the current files do not have is skipped and
+reported (`state/editor/report.txt`, the Your edits page). Randomize = one operation with its seed and settings: the same game
+state + settings + seed always give the same bytes.
+
+**Game facts the editor relies on** (BDSP v1.3.0 code, the same in Luminescent): names are read by position in their sheet
+(`MessageManager.GetNameMessage(file, int)`); a TM's compatibility bit = its item's `group_id - 1`; Luminescent's wild slots
+hold `species | form << 16`; an empty party slot is Seal -1 / Sex 3 / Ball 28 in the dump and all 0 in Luminescent; the type
+chart = the 18 InitializeArray blobs of `Pml.Battle.TypeAffinity` in global-metadata (found through its static
+constructor's metadata usage list, so an edited chart maps the same way); a form row = `form_index + form - 1`, so an
+inserted row moves every later row; `ss_zkn_form` is read by personal row, height / weight by label, `dp_pokedex_*` by
+species (dump) or personal row (Luminescent); cry events are named from the numbers (`Play_PV_Btl_{dex}_{form}_..`), so an
+inserted Pokemon gets copies of the source's events, whose sounds play new media ids (streamed `<id>.wem` copies in
+`Audio/GeneratedSoundBanks/Switch`, one new id per source media); the menu icon is a sprite of the TextureMass SpriteAtlas
+asked by name (`UIManager.GetAtlasSprite(TEXTUREMASS, PokemonIcon.AssetName)`), so the copy is a new sprite + render-data
+entry on its own RGBA32 texture cut from the atlas page (the atlas's render data map is not sorted: appended). A mod's
+256-TM sets are `ExtraData/MonData/TMLearnset/monsno_<dex>_formno_<form>.json` {set01..set08}: the set is 256 long when
+the first species has one, machine1..4 keep the low 128 bits, a bit past 128 on a Pokemon without one makes the file (op
+`extradata`); a Pokemon with no TamagoWazaTable row gets one in personal order (op `eggmoves`). A new species is accepted
+only by a player with the type `Pml.MonsLimit` (species limits read from the data).
+
+**Checks** (developer tools of the build machine): JSON export -> import = 0 changes on the dump and on Luminescent; the
+inserter's personal-table invariants and catalog boot rule; every new bundle converts; an end-to-end conversion with edits
+on: `verify_bundle.py` of the edited bundles against the editor layer, `check_refs.py --full` over them, `status` ready; edits
+off returns the folder to its plain conversion.
+
+**uDPRE Studio (`ui/`).** One window, `shell.EditorApp` (`window.py` re-exports it) = a sidebar of pages (`NAV`,
+`PAGES` -> `ui/pages/<module>.py`, imported by name; PyInstaller cannot follow that, so `shell._frozen_imports()` names
+every page module - a new page goes there too), a search over Pokemon / moves / items / trainers / areas, and a status
+bar with your edits. `page.RecordPage` = a sortable `kit.DataTable` of records + the record on the right; subclasses give
+`columns`, `rows()`, `build()`, `show()`, `collect()` (set operations) and `op_key(op)` (edited markers, "Undo my edits
+to this ..."). Changes are kept when the record / page / window is left (snapshot of the tracked widgets vs the shown
+record); no Save buttons, no modal editors. Only `Studio.*` ttk styles (`theme.setup`): the main uDPRE window shares
+the style database. The Randomize page keeps `randomizer.OPTIONS` ids and the settings file, in its own wording
+(`pages/randomize.py` TEXT, CATS, PRESETS); its shape preview samples `distributions.Numeric` over the values
+`analyzer.default_settings(..., observed=)` reports. Its settings are kept when the page is left (project meta
+`randomizer`, `randomizer_seed`, and `randomizer_alt` = each pool / shape's other mode where it differs from the
+defaults). Randomize replaces the randomization the edits hold, at its place (`Session.replace`: edits made after it
+stay on top); a note under the seed says which seed the edits hold. Checks (developer tools of the build machine): every page saved on
+the dump and on Luminescent (the operations it makes, the data changes, edited markers, undo), the Randomize page's
+settings, JSON import / export and the console-mod export, and screenshots of any page / record / view.
+
+## Nuzlocke mode (`converter/udpre/nuzlocke.py`, `nuzlocke_ui.py`)
+
+The rules live in the **player** (the uDPR project's `Nuzlocke.*` code + hooks in the battle client, the
+EXP calculator, the register window, the box, the bag, shops, the Pokemon Center command, door warps, saves). uDPRE only
+writes the settings and reads the run:
+
+- `Dpr_Data/StreamingAssets/uDPRE/nuzlocke.txt` = `key=value` lines (`nuzlocke.SETTINGS` = every key, its values, default
+  and rule; the player's `NzConfig` reads the same keys once at start; no file / `enabled=0` = the shipped game). The
+  converter never removes it (it removes only files it copied).
+- The run: `SaveData.bin.nuzlocke` / `Backup.bin.nuzlocke` next to the saves (LocalLow/<app.info company>/<product>/nn/
+  save/<app>/<user>/), UTF-8 lines split by TAB (`NZLK 1`, `save <crc32> <length>` of the paired save, `state`, `info`,
+  `area`, `death`, `owned`, `pc`, `order`, `nick`, `msg`, `end <crc32 of the lines before>`). A file whose `save` line does
+  not match its save is another save's: the player starts a new run.
+- Player support: the player's `global-metadata.dat` names the type `NzConfig` (uDPRE 0.4.0's player and the 1.2.5 packs'
+  players on).
+- Areas = the zone's `PokePlaceName` (MapInfo, at run time); level caps = the first battle of each Gym Leader (trainer ids
+  175 240 242 241 243 179 244 245, each tied to its badge flag) and the last Elite Four member (188) read from the loaded
+  TrainerTable: the lowest ace among the leaders whose badge is missing = vanilla 14 22 30 30 36 39 42 49 / 63, Luminescent
+  2.2F 16 26 33 39 44 53 56 62 / 75. A dead Pokemon carries `0x4E5A0001` in `CoreParam.palma` (a field the game never
+  uses).
+
+Check (a developer tool of the build machine): a harness compiled against the player's assembly runs the player's own `NzConfig.Apply` / `NzRun.BuildSaveFile` / `ApplyLoaded` outside Unity: every key of every preset and of
+a set that changes every key reaches the right player field; the run file pairs, restores, and refuses another save or a
+changed byte; `nuzlocke.parse_run` reads the same file.
+
 ## Open items
 
 - Shining Pearl dumps: fingerprints and an SP player are not done.
 - A compact texture option (BC7 instead of RGBA32 for colour maps) for GPUs with little video memory.
-- Auto-update (a signed manifest on the Releases page, checked at start) - not planned for now.

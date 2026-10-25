@@ -75,6 +75,7 @@ class Mod:
         self.options = list(data.get('options', []))
         self.choice = {o['id']: o['default'] for o in self.options}     # the player's picks (set by choose)
         self.min_versions = dict(data.get('min_versions', {}))
+        self.near_misses = []           # mods-folder downloads that look like a missing source but are not it (discover)
 
     def option(self, oid):
         return next((o for o in self.options if o['id'] == oid), None)
@@ -151,38 +152,67 @@ def _has_exefs(folder):
 
 
 def load_manifest(path):
-    with open(os.path.join(path, MANIFEST), encoding='utf-8') as f:
-        d = json.load(f)
+    from . import advice
+    where = f'mods\\{os.path.basename(path)}'
+    try:
+        with open(os.path.join(path, MANIFEST), encoding='utf-8') as f:
+            d = json.load(f)
+    except ValueError:
+        raise ModError(advice.text(f'The mod pack in {where} is damaged ({MANIFEST} cannot be read)',
+                                   [advice.redownload_pack('mod', path)]))
+    name = d.get('name') or os.path.basename(path)
+
+    def broken(what):
+        return ModError(advice.text(f'The {name} pack in {where} is incomplete or damaged: {what}',
+                                    [advice.redownload_pack(name, path),
+                                     'Extract it with 7-Zip into an empty folder - an extraction that stopped early or '
+                                     'Windows\' own zip tool can leave files out']))
     if d.get('format') not in FORMATS:
-        raise ModError(f'{os.path.basename(path)}: mod pack format {d.get("format")}, this uDPRE reads formats '
-                       f'{", ".join(map(str, FORMATS))} - get the uDPRE release the pack was made for')
+        newer = isinstance(d.get('format'), int) and d['format'] > max(FORMATS)
+        raise ModError(advice.text(
+            f'The {name} pack in {where} is made for a ' + ('newer' if newer else 'different') + ' uDPRE (pack format '
+            f'{d.get("format")}; this uDPRE {advice.__version__} reads formats {", ".join(map(str, FORMATS))})',
+            [advice.newer_udpre() if newer else 'Get the version of the pack made for uDPRE ' + advice.__version__]))
     if not d.get('id'):
-        raise ModError(f'{os.path.basename(path)}: {MANIFEST} has no id')
+        raise broken(f'{MANIFEST} has no id')
     opts = {}
     for o in d.get('options', []):
         ids = [c.get('id') for c in o.get('choices', [])]
         if not o.get('id') or o['id'] in opts or not ids or len(set(ids)) != len(ids) or o.get('default') not in ids:
-            raise ModError(f'{d["id"]}: option {o.get("id")} is incomplete (id, choices with ids, a default choice)')
+            raise broken(f'its option "{o.get("id")}" is incomplete')
         opts[o['id']] = set(ids)
     for spec in d.get('layers', []):
         for oid, v in (spec.get('option') or {}).items():
             if oid not in opts or not set([v] if isinstance(v, str) else v) <= opts[oid]:
-                raise ModError(f'{d["id"]}: a layer names option {oid} = {v}, which the pack does not describe')
+                raise broken(f'a part of it names the option {oid} = {v}, which it does not describe')
     for sid, s in d.get('sources', {}).items():
         if not os.path.isfile(os.path.join(path, s.get('list', ''))) or not s.get('key'):
-            raise ModError(f'{d["id"]}: the file list of source {sid} is missing - the pack is incomplete')
+            raise broken(f'its list of the {s.get("name", sid)} files is missing')
     for spec in d.get('layers', []):
         kind = next((k for k in KINDS if k in spec), None)
         if kind is None:
-            raise ModError(f'{d["id"]}: a layer names neither romfs, source nor files')
+            raise broken('a part of it names neither romfs, source nor files')
         if kind == 'source':
             if spec['source'] not in d.get('sources', {}):
-                raise ModError(f'{d["id"]}: a layer takes source {spec["source"]}, which the pack does not describe')
+                raise broken(f'a part of it takes the download "{spec["source"]}", which it does not describe')
         elif not os.path.isdir(os.path.join(path, spec[kind])):
-            raise ModError(f'{d["id"]}: layer folder {spec[kind]} is missing - the pack is incomplete')
+            raise broken(f'its folder "{spec[kind]}" is missing')
     if d.get('player') and not os.path.isfile(os.path.join(path, d['player'], 'profile.json')):
-        raise ModError(f'{d["id"]}: player folder {d["player"]} has no profile.json - the pack is incomplete')
+        raise broken(f'its game player (folder "{d["player"]}") is missing')
     return Mod(path, d)
+
+
+def _is_game_dump(data, at_least=10000):
+    """a romfs/Data folder that holds the whole game: the dump has ~14,000 files under AssetAssistant, a big overhaul mod
+    (Luminescent: 3,137, with its own catalog, shaders and globalgamemanagers) far fewer"""
+    if not os.path.isfile(os.path.join(data, 'globalgamemanagers')):
+        return False
+    n = 0
+    for _root, _dirs, files in os.walk(os.path.join(data, *AA.split('/'))):
+        n += len(files)
+        if n >= at_least:
+            return True
+    return False
 
 
 def matches_source(data, mod, sid):
@@ -216,15 +246,26 @@ def discover(mods_dir, picked=None):
             if os.path.isfile(os.path.join(path, MANIFEST)):
                 m = load_manifest(path)
                 if m.id in found:
-                    problems.append(f'{name}: id {m.id} is also used by {os.path.basename(found[m.id].path)} - ignored')
+                    from . import advice
+                    other = found[m.id]
+                    v_other, v_this = other.version or 'no version', m.version or 'no version'
+                    problems.append(advice.text(
+                        f'You have the {m.name} pack twice: mods\\{os.path.basename(other.path)} ({v_other}) and '
+                        f'mods\\{name} ({v_this}); uDPRE uses the first one',
+                        ['Delete the folder of the older version from the mods folder, then press "Look again"']))
                     continue
                 found[m.id] = m
             else:
                 datas = _romfs_datas(path)
                 if datas:
                     raw.append((name, path, datas))
-        except (ModError, OSError, ValueError, KeyError) as e:
-            problems.append(f'{name}: {e}')
+        except ModError as e:
+            problems.append(str(e))
+        except (OSError, ValueError, KeyError) as e:
+            from . import advice
+            problems.append(advice.text(f'mods\\{name} cannot be read ({type(e).__name__}: {e})',
+                                        ['If it is a mod pack, download it again and replace the folder',
+                                         'If it is not a mod, move it out of the mods folder']))
     # the downloads packs need: in the mods folder (a raw folder, or inside a pack folder), or where the player pointed
     claimed = set()
     datas_all = [(n, d) for n, _, ds in raw for d in ds] + \
@@ -245,12 +286,37 @@ def discover(mods_dir, picked=None):
                             m.source_paths[sid] = d
             except (OSError, ValueError, KeyError) as e:
                 problems.append(f'{os.path.basename(m.path)}: {e}')
+    from . import advice
+    wanting = [(m, sid) for m in found.values() for sid in m.missing_sources()]
     for name, path, datas in raw:
         if name in claimed:
             continue
+        if any(_is_game_dump(d) for d in datas):
+            problems.append(advice.text(
+                f'mods\\{name} is a copy of the whole game (a dump), not a mod',
+                ['Move it out of the mods folder (move it, do not delete it - it is your game)',
+                 'Pick it as your dump instead: Browse... at the top of the window']))
+            continue
         if _has_exefs(path):
-            problems.append(f'{name}: this mod changes the game code (exefs), so it needs a uDPRE mod pack made for it; '
-                            f'the console version cannot be used as it is.')
+            if wanting:
+                # most often: the download a pack needs, but another version / the Shining Pearl one / not extracted right
+                for m, sid in wanting:
+                    m.near_misses.append(f'mods\\{name}')
+                need = '; '.join(f'the {m.name} pack needs exactly {m.sources[sid].get("name", sid)}' for m, sid in wanting)
+                problems.append(advice.text(
+                    f'mods\\{name} changes the game code (it has an "exefs" folder) and is not a download a pack is waiting '
+                    f'for ({need})',
+                    ['If it is meant to be that download: it is another version of the mod, the Shining Pearl version, or '
+                     'not all of it was extracted - get exactly the version named above for Brilliant Diamond and extract '
+                     'it with 7-Zip into a new folder',
+                     'If it is another mod: Switch mods that change the game code need a uDPRE pack made for them - move '
+                     'it out of the mods folder']))
+            else:
+                problems.append(advice.text(
+                    f'mods\\{name} changes the game code (it has an "exefs" folder); a Switch mod like that only works on '
+                    f'PC through a uDPRE mod pack made for it',
+                    ['Move it out of the mods folder (it is not used)',
+                     'If a uDPRE pack of this mod exists, put that pack into the mods folder instead']))
             continue
         m = Mod(path, {'id': 'raw:' + name, 'name': name + ' (console mod, data only)',
                        'layers': [{'romfs': os.path.relpath(datas[0], path)}]}, raw=True)
@@ -260,8 +326,8 @@ def discover(mods_dir, picked=None):
 
 
 def source_text(m, sid):
-    s = m.sources[sid]
-    return f'{m.name} needs your own copy of {s.get("name", sid)}: {s.get("where", "")}'.rstrip(': ')
+    from . import advice
+    return advice.source_missing(m, sid, ', '.join(m.near_misses) or None)
 
 
 def version_key(v):
@@ -276,32 +342,50 @@ def version_key(v):
 def choose(found, enabled_ids, options=None):
     """Enabled ids (+ options = {pack id: {option id: choice id}}, the picks under each pack's tick) -> the mods in layer
     order (bottom first), each with its choice set. Raises ModError naming every problem."""
+    from . import advice
     bad = []
     chosen = []
     on = set(enabled_ids)
     for i in enabled_ids:
         if i not in found:
-            bad.append(f'mod "{i}" is not in the mods folder')
+            bad.append(advice.text(
+                f'The mod "{i}" was on last time, but its pack is no longer in the mods folder',
+                ['Put the pack back into the mods folder and press "Look again"',
+                 'Or leave it out: the next conversion goes on without it (from the console: convert --mods with the '
+                 'packs you want)']))
             continue
         chosen.append(found[i])
-        bad += found[i].set_choice((options or {}).get(i))
+        for b in found[i].set_choice((options or {}).get(i)):
+            bad.append(advice.text(b, ['Pick one of the choices shown under the pack\'s tick, then press Apply']))
     pairs = set()
     for m in chosen:
         for r in m.requires:
             if r not in on:
-                bad.append(f'{m.name} needs {found[r].name if r in found else r}')
+                if r in found:
+                    bad.append(advice.text(f'The {m.name} pack works only on top of {found[r].name}',
+                                           [f'Tick {found[r].name} too (it is in your mods folder), then press Apply']))
+                else:
+                    bad.append(advice.text(f'The {m.name} pack works only on top of the "{r}" pack, which is not in your '
+                                           f'mods folder',
+                                           [f'Get the "{r}" uDPRE pack, put it into the mods folder, press "Look again" '
+                                            f'and tick it', f'Or untick {m.name}']))
         for c in m.conflicts:
             if c in on and frozenset((m.id, c)) not in pairs:
                 pairs.add(frozenset((m.id, c)))
-                bad.append(f'{m.name} cannot be used together with {found[c].name if c in found else c}')
+                other = found[c].name if c in found else c
+                bad.append(advice.text(f'{m.name} and {other} cannot be used together',
+                                       [f'Untick one of them, then press Apply']))
         for v_id, least in m.min_versions.items():
             other = found.get(v_id)
             if v_id in on and other is not None and version_key(other.version) < version_key(least):
-                bad.append(f'{m.name} needs {other.name} {least} or newer (this one is {other.version or "unversioned"})')
+                bad.append(advice.text(
+                    f'The {m.name} pack needs {other.name} {least} or newer, and your {other.name} pack is '
+                    f'{other.version or "an old version without a number"}',
+                    [advice.update_pack(other, least), 'Press "Look again", then Apply']))
         for sid in m.missing_sources():
             bad.append(source_text(m, sid))
     if bad:
-        raise ModError('\n'.join(dict.fromkeys(bad)))
+        raise ModError('\n\n'.join(dict.fromkeys(bad)))
     return sorted(chosen, key=lambda m: (m.order, m.id))
 
 
@@ -340,13 +424,28 @@ def _walk(root):
             yield os.path.relpath(full, root).replace(os.sep, '/'), full
 
 
+class _Index(dict):
+    """The stack's path -> top-most Source map while it is built; history keeps every layer's Source of a path (bottom
+    first), for merging (merge.py). Keys are Dpr_Data paths; history keys the romfs paths of Switch files."""
+
+    def __init__(self):
+        super().__init__()
+        self.history = {}
+
+    def __setitem__(self, k, v):
+        super().__setitem__(k, v)
+        if v.kind == 'switch':
+            rel = AUDIO_SW + k[len(AUDIO_WIN):] if k.startswith(AUDIO_WIN) else k
+            self.history.setdefault(rel, []).append(v)
+
+
 class Source:
     """One file of the stack: kind 'switch' (convert / take from a Switch file) or 'windows' (copy as is). sha1 = its digest
-    when known up front (a listed download file)."""
-    __slots__ = ('kind', 'path', 'key', 'mod', 'sha1')
+    when known up front (a listed download file); raw = it comes from a console mod (no pack manifest)."""
+    __slots__ = ('kind', 'path', 'key', 'mod', 'sha1', 'raw')
 
-    def __init__(self, kind, path, key, mod, digest=None):
-        self.kind, self.path, self.key, self.mod, self.sha1 = kind, path, key, mod, digest
+    def __init__(self, kind, path, key, mod, digest=None, raw=False):
+        self.kind, self.path, self.key, self.mod, self.sha1, self.raw = kind, path, key, mod, digest, raw
 
 
 class Stack:
@@ -355,7 +454,7 @@ class Stack:
     def __init__(self, dump_data, chosen, bundle_list):
         self.dump = dump_data
         self.chosen = chosen
-        self.index = {}
+        self.index = _Index()
         on = {m.id for m in chosen}
         aa = os.path.join(dump_data, *AA.split('/'))
         for rel in bundle_list:
@@ -374,7 +473,11 @@ class Stack:
                 for rel, dump_rel in (spec.get('dump') or {}).items():
                     src = os.path.join(dump_data, *dump_rel.split('/'))
                     if not os.path.isfile(src):
-                        raise ModError(f'{m.name}: needs the dump file {dump_rel}, which is missing')
+                        from . import advice
+                        raise ModError(advice.text(
+                            f'The {m.name} pack uses the game file {dump_rel} of your dump, and your dump does not have '
+                            f'it', ['Your dump is incomplete: extract it again into an empty folder (with the v1.3.0 '
+                                    'update) and pick that folder']))
                     self.index[out_rel(rel)] = Source('switch', src, f'{tag}:dump={dump_rel}', m.id)
                 if kind == 'source':
                     root = m.source_paths[d]
@@ -389,15 +492,22 @@ class Stack:
                         st = os.stat(full)
                         key = f'{tag}:{st.st_size}:{st.st_mtime_ns}'
                         if kind == 'romfs':
-                            self.index[out_rel(rel)] = Source('switch', full, key, m.id)
+                            self.index[out_rel(rel)] = Source('switch', full, key, m.id, raw=m.raw)
                         else:
-                            self.index[rel] = Source('windows', full, 'copy:' + key, m.id)
+                            self.index[rel] = Source('windows', full, 'copy:' + key, m.id, raw=m.raw)
                 # a file that is a copy of another one of the stack (a translation's opening = the base mod's)
                 for rel, src_rel in (spec.get('copy') or {}).items():
                     s = self.index.get(out_rel(src_rel))
                     if s is None:
-                        raise ModError(f'{m.name}: needs {src_rel} from the mods below it, which none of them has')
+                        from . import advice
+                        raise ModError(advice.text(
+                            f'The {m.name} pack takes {src_rel} from the pack it builds on, and none of the packs you '
+                            f'ticked has it', [f'Tick the pack {m.name} is made for (its description in the Mods box '
+                                               f'names it)', f'If it is ticked already, update both packs to their newest '
+                                               f'versions']))
                     self.index[out_rel(rel)] = Source(s.kind, s.path, f'{tag}:copy={s.key}', m.id, s.sha1)
+        self.all_sources = self.index.history      # romfs path -> every layer's Source, bottom first (merge.py)
+        self.index = dict(self.index)
 
     def bundles(self):
         """{bundle path under AssetAssistant: Source} - every file there except the catalog."""
@@ -419,13 +529,19 @@ class Stack:
     def player_source(self, name):
         s = self.index.get(name)
         if s is None or s.kind != 'switch':
-            raise ModError(f'{name}: no Switch copy in the dump or the mods')
+            from . import advice
+            raise ModError(advice.text(f'Neither your dump nor your mods have the game file {name}',
+                                       ['Your dump is incomplete: extract it again into an empty folder and pick that '
+                                        'folder']))
         return s.path
 
     def shaders_bundle(self):
         s = self.index.get(AA + '/Dpr/shaders')
         if s is None:
-            raise ModError('Dpr/shaders is missing')
+            from . import advice
+            raise ModError(advice.text('Your dump has no StreamingAssets/AssetAssistant/Dpr/shaders',
+                                       ['Your dump is incomplete: extract it again into an empty folder and pick that '
+                                        'folder']))
         return s
 
 
@@ -434,10 +550,10 @@ def load_profile(mod):
     d = mod.player_dir()
     with open(os.path.join(d, 'profile.json'), encoding='utf-8') as f:
         prof = json.load(f)
-    for rel in prof.get('files', []):
+    from . import advice
+    for rel in list(prof.get('files', [])) + ['udpre/base/globalgamemanagers', 'udpre/shaders.pack']:
         if not os.path.isfile(os.path.join(d, *rel.split('/'))):
-            raise ModError(f'{mod.name}: player file {rel} is missing - the pack is incomplete')
-    for rel in ('udpre/base/globalgamemanagers', 'udpre/shaders.pack'):
-        if not os.path.isfile(os.path.join(d, *rel.split('/'))):
-            raise ModError(f'{mod.name}: player file {rel} is missing - the pack is incomplete')
+            raise ModError(advice.text(f'The {mod.name} pack is incomplete: its game player file {rel} is missing',
+                                       [advice.redownload_pack(mod), 'Extract it with 7-Zip into an empty folder (an '
+                                        'antivirus may also have removed the file: allow it)']))
     return prof, d
