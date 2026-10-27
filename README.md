@@ -82,6 +82,14 @@ uDPRE converts mods together with your dump, so Luminescent Platinum and its add
   `--options PACK.OPTION=CHOICE`; `uDPRE.exe online` (check), `online update`, `online get ID|all`, `online remove ID`,
   `online rollback ID`.
 
+**Ultrawide and 16:10 screens:** the game is laid out for 16:9. The **True Ultrawide UI** pack lays it out for your screen
+instead: on 21:9 and 32:9 the menus, battle screens, Pokedex, Town Map, Poketch, Bag, contests, cutscenes and battle-start
+effects use the whole width; on 16:10 (1920x1200, 2560x1600, Steam Deck) they use the whole height and the 3D view keeps the
+full 16:9 width. Under its tick pick the **Screen shape**: **This PC's screen** (the shape of your main monitor when you
+convert - convert again after changing monitors) or a listed shape (`--options widescreen.screen=3440x1440`). It works
+under every other pack. Play at a resolution of that shape (Options > Resolution); a window of another shape still shows
+the whole game, with empty space at the sides or at the top and bottom.
+
 ## Editor and randomizer (Beta)
 
 Beta: it works, but it is new and has had less play-testing than the rest of uDPRE - if something looks wrong, turn

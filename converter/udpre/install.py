@@ -243,9 +243,11 @@ def pack_digests(p, pack):
 def fingerprint(p, setup, edits=None):
     """What the converted data was made against: player base globalgamemanagers, shader pack per container, mod set, and
     the edit project's digest when the edits are on."""
+    from . import widescreen
     return {'base_ggm': sha1(setup.base_ggm), 'pack': pack_digests(p, setup.pack), 'player': setup.player_id,
             'mods': modlib.signature(setup.chosen), 'edits': edits,
-            'merge': load_config(p).get('merge_choices') if any(m.raw for m in setup.chosen) else None}
+            'merge': load_config(p).get('merge_choices') if any(m.raw for m in setup.chosen) else None,
+            'screen': widescreen.fingerprint(setup.chosen)}
 
 
 def edits_digest(p, cfg):
@@ -311,6 +313,8 @@ def status(p):
         reasons.append('your edits')
     if old.get('merge') != now['merge']:
         reasons.append('the merge choices')
+    if old.get('screen') != now['screen']:
+        reasons.append('the screen shape')
     wrong = [rel for rel, h in expected_player(p, setup).items()
              if not os.path.isfile(os.path.join(p.root, *rel.split('/'))) or sha1(os.path.join(p.root, *rel.split('/'))) != h]
     if wrong:
@@ -533,6 +537,25 @@ def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=
     else:
         from . import merge
         merge.clear(p.state)        # no console mod: the merged files of an earlier choice are not needed
+    # generated layers above the packs: the widescreen pack's screen shape, then the Editor & Randomizer's edits
+    generated = []
+    from . import widescreen
+    if widescreen.pack_of(setup.chosen) is not None:
+        progress('screen shape', 0, 1)
+        try:
+            shaped = widescreen.build(p, stack, setup, log)
+        except Exception as e:      # rules the current files cannot take: the conversion stops before changing anything
+            raise DumpError(advice.text(
+                'The screen shape of the widescreen pack could not be applied to the game files of this mod choice. '
+                'Nothing was changed', ['To play now without it: untick the widescreen pack and press Apply',
+                                        'Update the widescreen pack and uDPRE to their newest versions, then tick it '
+                                        'again'], details=f'{type(e).__name__}: {e}'))
+        if shaped.layer is not None:
+            generated.append(shaped.layer)
+            stack = modlib.Stack(data, setup.chosen + generated, bundles)
+        progress('screen shape', 1, 1)
+    else:
+        widescreen.clear(p)
     if edits is not None:
         cfg['edits_on'] = bool(edits)
     edit_digest = None
@@ -551,7 +574,8 @@ def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=
                             'them'], details=f'{type(e).__name__}: {e}'))
         edit_digest = built.digest
         if built.layer is not None:
-            stack = modlib.Stack(data, setup.chosen + [built.layer], bundles)
+            generated.append(built.layer)
+            stack = modlib.Stack(data, setup.chosen + generated, bundles)
         setup.overrides = dict(built.overrides)
         cfg['edits'] = {'digest': built.digest, 'overrides': built.overrides, 'changed': built.changed,
                         'skipped': len(built.warnings)}

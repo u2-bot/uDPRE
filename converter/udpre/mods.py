@@ -18,6 +18,9 @@ optional "option": {option id: choice id or [choice ids]} (the layer counts only
 in the config as {pack id: {option id: choice id}}; an option without a pick uses its default. Format 2 also adds
 "min_versions": {pack id: version} - while that pack is on it must be at least this version (e.g. a pack whose file only a
 newer Luminescent player reads).
+Format 3 adds "widescreen": RULES.json - a pack of screen-shape rules instead of game files (widescreen.py): values of the UI
+objects a widescreen mod changes, made at conversion time for the screen shape the pack's "screen" option picks and applied
+to whatever the stack holds.
 Switch files go through the same conversion as the dump, so the pack's bundles and the dump's keep pointing at each other by
 the Switch path IDs.
 A player's download is found anywhere under the mods folder (any folder holding romfs/Data whose key file has the listed
@@ -31,8 +34,8 @@ import hashlib
 import json
 import os
 
-FORMAT = 2                  # the newest pack format this uDPRE reads (1 = no sub-options)
-FORMATS = (1, 2)
+FORMAT = 3                  # the newest pack format this uDPRE reads (1 = no sub-options, 2 = no widescreen rules)
+FORMATS = (1, 2, 3)
 MANIFEST = 'udpre_mod.json'
 RAW_ORDER = 1000
 AA = 'StreamingAssets/AssetAssistant'
@@ -75,6 +78,7 @@ class Mod:
         self.options = list(data.get('options', []))
         self.choice = {o['id']: o['default'] for o in self.options}     # the player's picks (set by choose)
         self.min_versions = dict(data.get('min_versions', {}))
+        self.widescreen = data.get('widescreen')      # format 3: the rules file of a widescreen pack (widescreen.py)
         self.near_misses = []           # mods-folder downloads that look like a missing source but are not it (discover)
 
     def option(self, oid):
@@ -199,6 +203,8 @@ def load_manifest(path):
             raise broken(f'its folder "{spec[kind]}" is missing')
     if d.get('player') and not os.path.isfile(os.path.join(path, d['player'], 'profile.json')):
         raise broken(f'its game player (folder "{d["player"]}") is missing')
+    if d.get('widescreen') and not os.path.isfile(os.path.join(path, d['widescreen'])):
+        raise broken(f'its screen rules ({d["widescreen"]}) are missing')
     return Mod(path, d)
 
 

@@ -10,7 +10,8 @@ SPEC.json:
                "copy": {REL: REL},
                "sources": [{"tree": DIR, "include": [glob...], "exclude": [glob...]} | {"file": PATH, "as": REL}]}
               | {"kind": "source", "source": ID, "name": TEXT, "where": TEXT, "key": REL, "sources": [...as above...]}],
-   "player": {"id": "lumi", "build": PLAYER_DIR, "overlays": [MOD_ROMFS_DATA...]}}          (player optional)
+   "player": {"id": "lumi", "build": PLAYER_DIR, "overlays": [MOD_ROMFS_DATA...]},          (player optional)
+   "widescreen": {"rules": RULES.json}}                    (optional -> pack format 3: screen-shape rules, widescreen.py)
 A "source" layer is a mod the PLAYER brings (we do not redistribute it): only its file list (romfs path, size, sha1) goes
 into the pack (sources/<ID>.json); the converter finds the player's copy by the key file and checks every file.
 --forbid DIR: the audit also fails on a pack file with the bytes of any file under DIR (e.g. the mod the player brings).
@@ -160,12 +161,20 @@ def main():
         sys.exit(f'{out} is not empty - give a new folder')
     os.makedirs(out, exist_ok=True)
     report = []
-    # format 2 = sub-options / minimum versions; a pack without them stays format 1 (readable by uDPRE 0.2.0 too)
+    # format 2 = sub-options / minimum versions; a pack without them stays format 1 (readable by uDPRE 0.2.0 too);
+    # format 3 = screen-shape rules (spec "widescreen": {"rules": PATH}, copied in as widescreen_rules.json)
     f2 = [k for k in ('options', 'min_versions') if spec['manifest'].get(k)]
-    manifest = {'format': 2 if f2 else 1}
+    manifest = {'format': 3 if spec.get('widescreen') else 2 if f2 else 1}
     manifest.update({k: spec['manifest'][k] for k in MANIFEST_KEYS if k in spec['manifest']})
     for k in f2:
         manifest[k] = spec['manifest'][k]
+    if spec.get('widescreen'):
+        link(spec['widescreen']['rules'], os.path.join(out, 'widescreen_rules.json'))
+        manifest['widescreen'] = 'widescreen_rules.json'
+        with open(spec['widescreen']['rules'], encoding='utf-8') as f:
+            rules = json.load(f)
+        report.append(f'widescreen rules: {len(rules.get("files", {}))} files, '
+                      f'{sum(len(v) for v in rules.get("files", {}).values())} objects')
     manifest['layers'] = []
     dump_twins = Twins(dump)
     dump_twin = dump_twins.twin
