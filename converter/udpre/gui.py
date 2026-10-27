@@ -92,6 +92,14 @@ class App:
         self.nz_note = ttk.Label(nrow, text='', foreground='#555')
         self.nz_note.pack(side='left', padx=(12, 0))
         self.nz_refresh()
+        self.lan_box = ttk.LabelFrame(self.win, text='Play together: LAN (Beta)')
+        self.lan_box.pack(fill='x', **pad)
+        lrow = ttk.Frame(self.lan_box)
+        lrow.pack(fill='x', padx=8, pady=6)
+        ttk.Button(lrow, text='LAN play...', command=self.open_lan).pack(side='left')
+        self.lan_note = ttk.Label(lrow, text='', foreground='#555')
+        self.lan_note.pack(side='left', padx=(12, 0))
+        self.lan_refresh()
         self.selected = list(cfg.get('mods', []))
         self.options = {k: dict(v) for k, v in (cfg.get('options') or {}).items()}   # picks under the packs' ticks
         self.opts_open = set()      # (pack id, option id) whose choices are listed; the others show one line
@@ -322,6 +330,26 @@ class App:
         from .nuzlocke_ui import NuzlockeDialog
         NuzlockeDialog(self.win, self.paths.root, TITLE, on_change=self.nz_refresh)
 
+    # --- LAN play ------------------------------------------------------------------------------------------------------
+    def lan_refresh(self):
+        from . import lan
+        sup = lan.player_supports(self.paths.root)
+        info = lan.read(self.paths.root)
+        if sup is False or (sup and not info):
+            text = 'convert once to get LAN play'
+        elif sup is None:
+            text = ''
+        else:
+            s = lan.read_settings(self.paths.root)
+            text = ('on' if s['lan'] else 'off') + (' · overworld' if s['lan'] and s['world'] else '') + \
+                f' · {"Luminescent" if info.get("family") == "lumi" else "Brilliant Diamond"} {info.get("release", "")}' + \
+                (f' · {len(s["peers"])} friend address(es)' if s['peers'] else '')
+        self.lan_note.config(text=text)
+
+    def open_lan(self):
+        from .lan_ui import LanDialog
+        LanDialog(self.win, self.paths.root, TITLE, on_change=self.lan_refresh, app_dir=self.paths.root)
+
     def show_merge(self):
         import json
         rep_path = os.path.join(self.paths.state, 'merged', 'report.json')
@@ -430,6 +458,8 @@ class App:
         edits_changed = 'your edits' in st.get('reason', '') or 'merge choices' in st.get('reason', '')
         mods_changed = mods_changed or edits_changed
         self.merge_summary()
+        if hasattr(self, 'lan_note'):
+            self.lan_refresh()
         try:
             modlib.choose(self.found, self.selected, self.options)
             self.mod_note.config(text='', cursor='')

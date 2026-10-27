@@ -25,6 +25,16 @@ Nuzlocke, Beta (the game enforces the rules; they apply the next time it starts)
   uDPRE.exe nuzlocke preset nuzlocke|hardcore|off
   uDPRE.exe nuzlocke set KEY=VALUE [KEY=VALUE ...]   e.g. set level_cap=hard battle_items=balls_only
   uDPRE.exe nuzlocke run            the run of the newest save: areas, the graveyard, the level cap
+LAN play, Beta (Union Room, Colosseum, Underground, contests with other uDPRE players; the game reads it when it starts):
+  uDPRE.exe lan [show]              the settings, this game's build and the firewall rule
+  uDPRE.exe lan on|off
+  uDPRE.exe lan port N              first port (default 39290; UDP + TCP, 8 in a row)
+  uDPRE.exe lan peers A[,B...]|-    friends' addresses searched directly (Tailscale, the internet); - = none
+  uDPRE.exe lan bind IP|-           use only the adapter with this address; - = every adapter
+  uDPRE.exe lan world on|off        the overworld: see the other players walking around (battle, trade, team up with them)
+  uDPRE.exe lan follow 0|1|2        following Pokemon: as the game | the lead outdoors | the lead everywhere it fits
+  uDPRE.exe lan host                start a world host (keeps the overworld up while players come and go)
+  uDPRE.exe lan firewall            add the Windows Firewall rule (asks for administrator rights)
 Without --root the uDPRE folder is the one holding the executable (frozen) or the current folder.
 """
 import os
@@ -181,6 +191,8 @@ def main(argv=None):
         return 0
     if cmd == 'nuzlocke':
         return nuzlocke_command(root, args)
+    if cmd == 'lan':
+        return lan_command(root, args)
     if cmd == 'online':
         return online_command(root, args)
     print(__doc__)
@@ -242,6 +254,58 @@ def online_command(root, args):
         return 0
     print('uDPRE.exe online [check | update | get ID,...|all | remove ID | rollback ID]')
     return 2
+
+
+def lan_command(root, args):
+    from . import lan
+    sub = args.pop(0) if args else 'show'
+    s = lan.read_settings(root)
+    if sub == 'show':
+        sup = lan.player_supports(root)
+        info = lan.read(root)
+        print(f'LAN play: {"on" if s["lan"] else "off"}, port {s["port"]}, peers {", ".join(s["peers"]) or "-"}, '
+              f'adapter {s["bind"] or "every"}, overworld {"on" if s["world"] else "off"}, '
+              f'following Pokemon {s["follow"]} ({lan.FOLLOW_CHOICES[s["follow"]]})  '
+              f'({lan.settings_path(root) or "no game here yet"})')
+        print('game: ' + ('has LAN play' if sup else 'NO LAN play - convert with uDPRE 0.5.0' if sup is False else 'not converted'))
+        print('build: ' + (f'{info.get("fingerprint", "")[:16]}  {info.get("label", "")}' if info else 'not written yet (convert)'))
+        fw = lan.firewall_rule_present(root)
+        print('firewall: ' + ('allowed' if fw else 'no rule yet (uDPRE.exe lan firewall)' if fw is False else 'cannot tell'))
+        return 0
+    if sub == 'firewall':
+        ok = lan.allow_firewall(root)
+        print('Answer Windows\' administrator prompt to add the rule.' if ok else 'Windows did not start the prompt.')
+        return 0 if ok else 1
+    if sub == 'host':
+        ok = lan.start_world_host(root, root)
+        print('World host started in its own window (close it to stop).' if ok else
+              f'No world host here ({lan.HOST_EXE} comes with the uDPRE release).')
+        return 0 if ok else 1
+    try:
+        if sub in ('on', 'off'):
+            s['lan'] = sub == 'on'
+        elif sub == 'port' and args:
+            s['port'] = int(args[0])
+            if not 1024 <= s['port'] < 65536 - lan.PORT_SPAN:
+                raise ValueError(f'the port must be 1024 .. {65535 - lan.PORT_SPAN}')
+        elif sub == 'peers' and args:
+            s['peers'] = [] if args[0] == '-' else [x.strip() for x in ' '.join(args).replace(';', ',').split(',') if x.strip()]
+        elif sub == 'bind' and args:
+            s['bind'] = '' if args[0] == '-' else args[0].strip()
+        elif sub == 'world' and args and args[0] in ('on', 'off'):
+            s['world'] = args[0] == 'on'
+        elif sub == 'follow' and args and args[0] in ('0', '1', '2'):
+            s['follow'] = int(args[0])
+        else:
+            print('uDPRE.exe lan [show | on | off | port N | peers A[,B...]|- | bind IP|- | world on|off | follow 0|1|2 | '
+                  'host | firewall]')
+            return 1
+        p = lan.write_settings(root, s['lan'], s['port'], s['peers'], s['bind'], s['world'], s['follow'])
+    except (ValueError, OSError) as e:
+        print(f'lan: {e}')
+        return 1
+    print(f'saved to {p} - restart the game if it is running')
+    return 0
 
 
 def nuzlocke_command(root, args):

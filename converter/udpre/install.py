@@ -715,6 +715,9 @@ def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=
     cfg['complete_version'] = CONVERT_VERSION
     cfg['completed'] = time.strftime('%Y-%m-%d %H:%M:%S')
     cfg['fingerprint'] = fingerprint(p, setup, edit_digest)
+    from . import lan
+    lan_fp = lan.write(root, setup.chosen, edit_digest, setup.player_id)
+    log(f'LAN play build: {lan_fp[:16]} ({lan.label(setup.chosen, edit_digest)})')
     save_config(p, cfg)
     return {'seconds': round(time.time() - t0), 'bundles': total_n, 'totals': totals, 'mods': setup.mod_ids,
             'player': setup.player_id}

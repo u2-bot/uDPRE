@@ -1,8 +1,9 @@
 """Assemble a uDPRE release folder from a Windows player build of the uDPR project (no game data inside).
 
   py -3.13 -I release/make_release.py PLAYER_DIR SWITCH_DATA OUT_DIR --base-version 1.2.3 [--census SWITCH_CENSUS.jsonl]
-                                      [--exe DIST_DIR] [--relay URL]
+                                      [--exe DIST_DIR] [--relay URL] [--extra FILE]...
 --relay = the address of the mod relay (online packs and updates); without it the release has no online packs.
+--extra = a file put in the release root as it is (e.g. the LAN world host program); audited like the rest.
 --base-version = the version of the uDPR game build PLAYER_DIR is (the game fixes the release carries), shown in the window.
 Steps: copy our player files (every file except the game data below) -> make_player_base (renumbered registry + base
 globalgamemanagers) -> make_shaderpack -> udpre/bundles.txt + release.json + player_files.json (the files a mod pack's player
@@ -229,7 +230,8 @@ def main():
     relay = a[a.index('--relay') + 1].rstrip('/') if '--relay' in a else None
     if not base_version:
         sys.exit('--base-version VERSION is needed: the version of the uDPR game build the player is (shown in the window)')
-    flags = {'--census', '--exe', '--base-version', '--relay'}
+    extras = [a[i + 1] for i, x in enumerate(a) if x == '--extra' and i + 1 < len(a)]
+    flags = {'--census', '--exe', '--base-version', '--relay', '--extra'}
     pos = [x for i, x in enumerate(a) if x not in flags and (i == 0 or a[i - 1] not in flags)]
     player, switch_data, out = (os.path.abspath(x) for x in pos[:3])
     if os.path.exists(out) and os.listdir(out):
@@ -261,6 +263,9 @@ def main():
         print(f'license texts collected: {n} packages')
     for f in ('LICENSE', 'THIRD-PARTY-NOTICES.md', 'README.md'):
         shutil.copyfile(os.path.join(REPO, f), os.path.join(out, f))
+    for f in extras:
+        shutil.copyfile(f, os.path.join(out, os.path.basename(f)))
+        print(f'extra: {os.path.basename(f)}')
     with open(os.path.join(out, 'udpre', 'release.json'), 'w', encoding='utf-8') as f:
         json.dump(info, f, indent=1)
     # the player files a mod pack's profile may replace: the converter keeps ours aside and puts them back by these hashes

@@ -55,6 +55,9 @@ Releases on the repository page.
   Luminescent pack: `%USERPROFILE%\AppData\LocalLow\DefaultCompanyLumi\`
 - Settings: `pc_settings.ini` in the same folder, and the in-game Options menu (resolution, frame rate, V-Sync, keyboard and
   controller buttons, fast-forward)
+- Typing (your name, nicknames, box names, codes): in the game's own window - type on the keyboard (your IME works for
+  Japanese, Korean and Chinese), or pick characters from the on-screen grid with a controller (A type, B delete, Y space,
+  L / R page, + OK) or the mouse. `swkbd=dialog` in pc_settings.ini brings back the old separate dialog window.
 
 ## Mods
 
@@ -152,6 +155,70 @@ newer). The run (each area's encounter, the graveyard, the level cap) is saved n
 (`SaveData.bin.nuzlocke`); **Your run** in the dialog shows it. A new game starts a new run; a save from before you turned
 the mode on starts its run where it is. From a command prompt: `uDPRE.exe nuzlocke show`, `uDPRE.exe nuzlocke preset
 nuzlocke|hardcore|off`, `uDPRE.exe nuzlocke set level_cap=hard battle_items=balls_only`, `uDPRE.exe nuzlocke run`.
+
+## LAN play (Beta)
+
+Everything the Switch plays over local wireless, played with other uDPRE players on your network: the **Union Room**
+(greetings, trades, battles, records, Ball Capsules), the **Colosseum** (single, double and four-player multi battles), the
+**Grand Underground** (up to 8 players: digging together, Secret Bases) and **Super Contest Shows**. In the game, pick local
+communication (Local Play) where the game offers it, as on the Switch. Internet features (GTS, Wonder Trade, online battles,
+Mystery Gift over the internet) still need Nintendo's servers and stay offline.
+
+**Overworld (Beta):** players of the same game also see each other walking around Sinnoh - in the same city or on the same
+route, in their own outfits, with their names, cycling, surfing and with their following Pokemon. Everyone keeps their own game:
+your save, story and world are yours. Walk up to another player and press A:
+
+- **Battle**: a Single or Double link battle right there; both of you are back where you stood afterwards. With a Team Up
+  partner nearby, **Multi Battle (2 vs 2)** challenges the other player's team: you and your partner against them and theirs,
+  each player choosing and commanding their own Pokemon (the Colosseum's Multi rules). Only the two leaders are asked; the
+  partners join by themselves (if one of them can't right now, it is called off for all four).
+- **Trade**: the Union Room's trade, anywhere. Both games save it as one step: a crash or a lost link mid-trade never copies or
+  loses a Pokemon (an unfinished trade is settled the next time you two meet).
+- **Team Up**: while you are close together, a wild Pokemon or an ordinary Trainer that one of you runs into becomes a battle
+  for both of you (two against two). Each of you gains experience for your own Pokemon and the full prize money; a catch
+  belongs to whoever threw the ball, and both of you register what you saw. While both wild Pokemon are up, a Poke Ball asks
+  which one to throw at; catching one does not end the battle while the other is still up, so either of you can catch the
+  second too (two catches = two Pokedex screens afterwards). The Trainer counts as beaten for the one who ran into them. Gym
+  Leaders, the Elite Four, the Champion, rivals and legendary Pokemon stay solo. In a Nuzlocke run each game keeps its own
+  run's rules for its own Pokemon (fainting, level cap, battle items, clauses); a team wild battle uses up the area's encounter
+  for both of you, either of the two wild Pokemon may be the one you catch, and once you have caught yours the other one is
+  your partner's to catch. The Poke Balls and medicine your partner uses come out of their own bag, and their ball is thrown
+  by their own trainer on both screens.
+- **Trainer Card**, **Emote** and **Say** (preset phrases, shown over your head to everyone in the map; on the field the
+  **T** key opens them too, `chat_key=` in pc_settings.ini changes the key; "Type a message..." at the top opens the keyboard).
+- **Chat box** (bottom-left): a small Chat button with a count of unread lines; new lines pop up above it. **Enter** (or
+  **LT**) opens it and you keep walking while it is open. Enter types a line to every player in the world, whatever map they
+  are in (Enter sends, Esc cancels the line); with a controller, **LB** opens the keyboard (the left stick or the d-pad moves,
+  A types, + sends, - cancels). A line also shows over your head to those near you. Scroll with the mouse wheel,
+  PageUp / PageDown or the right stick; Esc or LT closes it. LT and RT do not talk to people while you play in a LAN world.
+- **Player list** (top-left): everyone in your world and where they are (the route or town; "here" = the same place as you,
+  "nearby" = the same map, "busy" = in a battle, a contest or a room), then the games nearby that cannot join you, greyed,
+  with the reason. **P** (or **RT**) hides and shows the player list and the chat box together.
+  `chat_open_key=` / `chat_list_key=` in pc_settings.ini change the keys. There is no word filter: play with people you know.
+- Names over other players are on dark plates (your Team Up partner's dot is gold).
+
+**Following Pokemon:** your lead Pokemon walks with you (`uDPRE.exe lan follow 0|1|2`, or the LAN window): 0 as the game (the
+party menu's choice, outdoors), 1 the lead by itself where the game lets one follow (the default), 2 the lead everywhere it fits,
+caves and buildings too. Others see your follower as you see theirs.
+
+**World host:** the overworld is hosted by one of the players' games and moves to another when that player quits; a world host
+(`uDPRE World Host.exe`, the LAN window's **Start a world host**, `uDPRE.exe lan host`) keeps it up on a PC that stays on - it
+plays no game of its own. Turn the overworld off with the **Overworld** box in the LAN window (`uDPRE.exe lan world off`).
+
+- **Same game, not the same mods**: players meet when they play the same game - Brilliant Diamond or Luminescent, the same
+  uDPRE version and the same Pokemon, battle, contest and Underground data. Cosmetic and own-world mods (Darker UI, Shiny Icons,
+  Heal Animation, translations, Dechibified, Easy Mode, Increased Shiny Odds), the game language and Nuzlocke rules may differ;
+  No Balance, or edits to Pokemon, moves or items, must match. In the game the chat box's player list (**P**) shows the games
+  nearby that cannot join you, greyed, with the reason. With different mods each game shows its own: a Dechibified player's
+  wardrobe outfit shows to other Dechibified players (overworld, battles, trainer cards) and to everyone else as their last
+  ordinary outfit, and in a Team Up Trainer battle the Trainer's Pokemon are the
+  leader's (an Easy Mode leader brings Easy Mode Trainers). **LAN play...** shows this game's build.
+- **Windows Firewall**: the player who opens a room must let others reach the game. Windows asks the first time; if it was
+  answered Cancel, or the network is a VPN or "public" one, press **Allow LAN play...** in the LAN window.
+- **Over the internet**: put all players on one virtual network (ZeroTier, Radmin VPN, Hamachi) - nothing to set. With
+  Tailscale, or a host with a forwarded port (UDP + TCP 39290-39297, and 39310-39317 for the overworld), add the host's
+  address under **Friends' addresses**.
+- From a command prompt: `uDPRE.exe lan show`, `uDPRE.exe lan peers 100.64.0.5`, `uDPRE.exe lan firewall`.
 
 ## What is in a release
 
