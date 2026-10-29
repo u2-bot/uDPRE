@@ -112,6 +112,15 @@ class App:
                     command=self.wild_save).pack(side='left')
         self.wild_note = ttk.Label(wrow, text='', foreground='#555', wraplength=260, justify='left')
         self.wild_note.pack(side='left', padx=(12, 0))
+        crow = ttk.Frame(self.wild_box)
+        crow.pack(fill='x', padx=8, pady=(0, 6))
+        ttk.Label(crow, text='Chase you:').pack(side='left', padx=(0, 4))
+        self.wild_chase = tk.StringVar(value=roaming.chase_label(w['chase']))
+        cpick = ttk.Combobox(crow, textvariable=self.wild_chase, values=[c[1] for c in roaming.CHASE], state='readonly',
+                             width=24)
+        cpick.pack(side='left')
+        cpick.bind('<<ComboboxSelected>>', lambda _e: self.wild_save())
+        ttk.Label(crow, text='the others only wander', foreground='#555').pack(side='left', padx=(12, 0))
         self.wild_refresh()
         self.nz_box = ttk.LabelFrame(self.body, text='Challenge: Nuzlocke (Beta)')
         self.nz_box.pack(fill='x', **pad)
@@ -384,21 +393,29 @@ class App:
     # --- wild Pokemon you can see --------------------------------------------------------------------------------------
     def wild_refresh(self, saved=False):
         from . import roaming
-        sup = roaming.player_supports(self.paths.root)
-        if sup is False:
-            text, colour = 'the game here has none yet: update uDPRE, then convert', '#a33'
-        elif sup is None:
-            text, colour = 'convert first', '#555'
-        else:
+        try:
+            state, pack = roaming.support(self.paths.root)
+        except Exception:       # an unreadable mods folder is reported by the Mods box; judge the game files alone
+            sup = roaming.player_supports(self.paths.root)
+            state, pack = ('yes' if sup else 'convert' if sup is None else 'update_udpre'), None
+        if state == 'yes':
             text, colour = ('Saved - restart the game if it is running.' if saved else
                             'Like the Grand Underground\'s. The game reads this when it starts.'), '#555'
-        self.wild_note.config(text=text, foreground=colour)
+        else:
+            text, colour = roaming.support_text(state, pack), '#555' if state == 'convert' else '#a33'
+        # a pack whose game code has none: the note opens Get mods, where that pack's update is
+        link = state == 'update_pack'
+        self.wild_note.config(text=text + (' - click here' if link else ''), foreground=colour, cursor='hand2' if link else '')
+        self.wild_note.unbind('<Button-1>')
+        if link:
+            self.wild_note.bind('<Button-1>', lambda _e: self.open_get_mods())
 
     def wild_save(self):
         from . import roaming
         mode = roaming.CHOICES.index(self.wild_var.get()) if self.wild_var.get() in roaming.CHOICES else 0
         try:
-            roaming.write(self.paths.root, mode, int(self.wild_count.get()))
+            chase = dict((label, pct) for pct, label in roaming.CHASE).get(self.wild_chase.get(), roaming.DEFAULT_CHASE)
+            roaming.write(self.paths.root, mode, int(self.wild_count.get()), chase)
         except (OSError, ValueError) as e:
             self.wild_note.config(text=f'Could not save: {e}', foreground='#a33')
             return

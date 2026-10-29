@@ -149,10 +149,12 @@ encounter slots; a shiny shows as one), on land and, while you surf, on the wate
 encounter. They appear and go only where the camera does not show them, and the others stay where they were over a battle.
 A Repel keeps the random encounters away, not these: you see them and can walk around them, as in the Grand Underground.
 With a LAN Team Up partner close by, walking into one starts your two-against-two battle, as a random encounter does.
+**Chase you** sets how many of them notice you and run at you (none, a few - the default, half, all; `roaming_chase` =
+0 .. 100 percent); the others only wander. After a battle the ones around you leave you a few seconds to walk away.
 **At once** sets how many walk around you (1 - 8, default 4). The setting is in `pc_settings.ini` (`roaming=0|1|2`,
 `roaming_count=1..8`); the game reads it when it starts - no conversion is needed, but the game must come with uDPRE 0.5.2
 or newer. From a command prompt:
-`uDPRE.exe roaming show`, `uDPRE.exe roaming 0|1|2`, `uDPRE.exe roaming count N`.
+`uDPRE.exe roaming show`, `uDPRE.exe roaming 0|1|2`, `uDPRE.exe roaming count N`, `uDPRE.exe roaming chase N`.
 
 ## Nuzlocke (Beta)
 

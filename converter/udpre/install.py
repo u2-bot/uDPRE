@@ -418,6 +418,7 @@ def _gib(n):
 
 
 DIED = 'the helper process converting it stopped'
+WINE_STUB = 0x80000100      # EXCEPTION_WINE_STUB: the process called a function Wine (Proton) does not implement
 
 
 def helpers_stopped_text(why):
@@ -470,6 +471,16 @@ def run_pool(fn, jobs, workers, log, initializer=None, initargs=(), died=None):
         mem = memory_free()
         why = (f'exit code {", ".join(hex(c & 0xffffffff) for c in codes)}' if codes else 'no exit code') + \
               (f'; free RAM {_gib(mem[0])}, free commit {_gib(mem[1])}' if mem else '')
+        if WINE_STUB in {c & 0xffffffff for c in codes}:
+            # Wine / Proton (Steam Deck): a helper called a Windows function this Wine only has as a stub - every helper
+            # would; uDPRE itself runs, so it converts the rest itself, one file at a time
+            log(f'helper processes cannot run on this system ({why}): uDPRE converts the remaining {len(left)} '
+                f'file{"s" if len(left) > 1 else ""} itself, one at a time (slower)')
+            if initializer is not None:
+                initializer(*initargs)
+            for j in left:
+                yield fn(j)
+            return
         if n > 1:
             workers = max(1, n // 2)
             log(f'a helper process stopped ({why}): {len(left)} file{"s go" if len(left) > 1 else " goes"} on with '
