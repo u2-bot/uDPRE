@@ -21,7 +21,7 @@ class App:
         self.win = tk.Tk()
         base = install.release_info(self.paths).get('base_version')
         self.win.title(TITLE + (f' (game base v{base})' if base else ''))
-        self.win.geometry('700x880')
+        self.win.geometry(f'700x{min(940, self.win.winfo_screenheight() - 80)}')
         self.win.minsize(600, 800)
         self.win.protocol('WM_DELETE_WINDOW', self.on_close)
         pad = {'padx': 12, 'pady': 6}
@@ -84,6 +84,23 @@ class App:
         ttk.Button(erow, text='Editor & Randomizer...', command=self.open_editor).pack(side='left', padx=(12, 0))
         self.edits_note = ttk.Label(erow, text='', foreground='#555')
         self.edits_note.pack(side='left', padx=(12, 0))
+        from . import roaming
+        self.wild_box = ttk.LabelFrame(self.win, text='Wild Pokemon you can see: walk into one to battle it (Beta)')
+        self.wild_box.pack(fill='x', **pad)
+        wrow = ttk.Frame(self.wild_box)
+        wrow.pack(fill='x', padx=8, pady=6)
+        w = roaming.read(self.paths.root)
+        self.wild_var = tk.StringVar(value=roaming.CHOICES[w['mode']])
+        wpick = ttk.Combobox(wrow, textvariable=self.wild_var, values=list(roaming.CHOICES), state='readonly', width=36)
+        wpick.pack(side='left')
+        wpick.bind('<<ComboboxSelected>>', lambda _e: self.wild_save())
+        ttk.Label(wrow, text='At once:').pack(side='left', padx=(12, 4))
+        self.wild_count = tk.StringVar(value=str(w['count']))
+        ttk.Spinbox(wrow, from_=1, to=roaming.MAX_COUNT, width=3, textvariable=self.wild_count, state='readonly',
+                    command=self.wild_save).pack(side='left')
+        self.wild_note = ttk.Label(wrow, text='', foreground='#555', wraplength=260, justify='left')
+        self.wild_note.pack(side='left', padx=(12, 0))
+        self.wild_refresh()
         self.nz_box = ttk.LabelFrame(self.win, text='Challenge: Nuzlocke (Beta)')
         self.nz_box.pack(fill='x', **pad)
         nrow = ttk.Frame(self.nz_box)
@@ -330,6 +347,29 @@ class App:
         from .nuzlocke_ui import NuzlockeDialog
         NuzlockeDialog(self.win, self.paths.root, TITLE, on_change=self.nz_refresh)
 
+    # --- wild Pokemon you can see --------------------------------------------------------------------------------------
+    def wild_refresh(self, saved=False):
+        from . import roaming
+        sup = roaming.player_supports(self.paths.root)
+        if sup is False:
+            text, colour = 'the game here has none yet: update uDPRE, then convert', '#a33'
+        elif sup is None:
+            text, colour = 'convert first', '#555'
+        else:
+            text, colour = ('Saved - restart the game if it is running.' if saved else
+                            'Like the Grand Underground\'s. The game reads this when it starts.'), '#555'
+        self.wild_note.config(text=text, foreground=colour)
+
+    def wild_save(self):
+        from . import roaming
+        mode = roaming.CHOICES.index(self.wild_var.get()) if self.wild_var.get() in roaming.CHOICES else 0
+        try:
+            roaming.write(self.paths.root, mode, int(self.wild_count.get()))
+        except (OSError, ValueError) as e:
+            self.wild_note.config(text=f'Could not save: {e}', foreground='#a33')
+            return
+        self.wild_refresh(saved=True)
+
     # --- LAN play ------------------------------------------------------------------------------------------------------
     def lan_refresh(self):
         from . import lan
@@ -460,6 +500,8 @@ class App:
         self.merge_summary()
         if hasattr(self, 'lan_note'):
             self.lan_refresh()
+        if hasattr(self, 'wild_note'):
+            self.wild_refresh()
         try:
             modlib.choose(self.found, self.selected, self.options)
             self.mod_note.config(text='', cursor='')

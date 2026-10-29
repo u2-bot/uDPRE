@@ -339,6 +339,16 @@ Check (a developer tool of the build machine): a harness compiled against the pl
 a set that changes every key reaches the right player field; the run file pairs, restores, and refuses another save or a
 changed byte; `nuzlocke.parse_run` reads the same file.
 
+## Wild Pokemon you can see (`converter/udpre/roaming.py`)
+
+The **player** does it (the uDPR project's `PcRoaming`: the Underground's symbol encounters on the overworld, from the
+area's own encounter table); uDPRE only writes the setting:
+
+- `pc_settings.ini` (LocalLow/<app.info company>/<product>/, the file of the LAN keys) `roaming=0|1|2` (0 = the shipped
+  game, 1 = with the random encounters, 2 = instead of them) and `roaming_count=1..8` (default 4); the player reads them
+  once at start, the first line of a key wins. `lan.write_keys` writes them (every other line kept), `lan.ini_values` reads.
+- Player support: the player's `global-metadata.dat` names the type `PcRoaming` (uDPRE 0.5.2's players on).
+
 ## Open items
 
 - Shining Pearl dumps: fingerprints and an SP player are not done.

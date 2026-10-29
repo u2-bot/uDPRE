@@ -25,6 +25,10 @@ Nuzlocke, Beta (the game enforces the rules; they apply the next time it starts)
   uDPRE.exe nuzlocke preset nuzlocke|hardcore|off
   uDPRE.exe nuzlocke set KEY=VALUE [KEY=VALUE ...]   e.g. set level_cap=hard battle_items=balls_only
   uDPRE.exe nuzlocke run            the run of the newest save: areas, the graveyard, the level cap
+Wild Pokemon you can see, Beta (they walk around the overworld, walk into one to battle it; the game reads it when it starts):
+  uDPRE.exe roaming [show]          the setting (pc_settings.ini roaming / roaming_count)
+  uDPRE.exe roaming 0|1|2           off (as the game) | on, with the random encounters | on, instead of them
+  uDPRE.exe roaming count N         how many at once (1 .. 8, default 4)
 LAN play, Beta (Union Room, Colosseum, Underground, contests with other uDPRE players; the game reads it when it starts):
   uDPRE.exe lan [show]              the settings, this game's build and the firewall rule
   uDPRE.exe lan on|off
@@ -193,6 +197,8 @@ def main(argv=None):
         return nuzlocke_command(root, args)
     if cmd == 'lan':
         return lan_command(root, args)
+    if cmd == 'roaming':
+        return roaming_command(root, args)
     if cmd == 'online':
         return online_command(root, args)
     print(__doc__)
@@ -254,6 +260,33 @@ def online_command(root, args):
         return 0
     print('uDPRE.exe online [check | update | get ID,...|all | remove ID | rollback ID]')
     return 2
+
+
+def roaming_command(root, args):
+    from . import lan, roaming
+    sub = args.pop(0) if args else 'show'
+    w = roaming.read(root)
+    if sub == 'show':
+        sup = roaming.player_supports(root)
+        print(f'wild Pokemon you can see: {w["mode"]} ({roaming.summary(w)})  '
+              f'({lan.settings_path(root) or "no game here yet"})')
+        print('game: ' + ('has them' if sup else 'does NOT have them - update uDPRE, then convert' if sup is False
+                          else 'not converted'))
+        return 0
+    try:
+        if sub in ('0', '1', '2'):
+            w['mode'] = int(sub)
+        elif sub == 'count' and args and args[0].isdigit() and 1 <= int(args[0]) <= roaming.MAX_COUNT:
+            w['count'] = int(args[0])
+        else:
+            print(f'uDPRE.exe roaming [show | 0 | 1 | 2 | count 1..{roaming.MAX_COUNT}]')
+            return 1
+        p = roaming.write(root, w['mode'], w['count'])
+    except OSError as e:
+        print(f'roaming: {e}')
+        return 1
+    print(f'saved to {p} - restart the game if it is running')
+    return 0
 
 
 def lan_command(root, args):

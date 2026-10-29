@@ -133,6 +133,24 @@ From a command prompt: `uDPRE.exe editor` opens the window, `uDPRE.exe edits lis
 `uDPRE.exe randomize SETTINGS.json [--seed N]`, `uDPRE.exe json export|import pokemon|trainers|text FILE`,
 `uDPRE.exe export FOLDER`, and `uDPRE.exe convert --edits on|off`.
 
+## Wild Pokemon you can see (Beta)
+
+The overworld's wild Pokemon walk around you, the way the Grand Underground's do: walk into one to battle it. Pick it in the
+**Wild Pokemon you can see** box of the uDPRE window:
+
+- **Off** - as the game: random encounters in grass, caves and water (the default).
+- **On, and the random encounters too** - both.
+- **On, instead of the random encounters** - walking through grass or a cave starts no battle by itself; you choose which
+  Pokemon to fight. The Poke Radar's shaking grass, a wandering legendary and the double battles of a partner travelling
+  with you stay as they are.
+
+They come from the area's own encounter table (the same species, levels and time of day; a shiny shows as one), on land
+and, while you surf, on the water. Touching one plays the Underground's encounter. They appear and go only where the camera
+does not show them, and the others stay where they were over a battle. **At once** sets how many walk around you (1 - 8,
+default 4). The setting is in `pc_settings.ini` (`roaming=0|1|2`, `roaming_count=1..8`); the game reads it when it starts -
+no conversion is needed, but the game must come with uDPRE 0.5.2 or newer. From a command prompt:
+`uDPRE.exe roaming show`, `uDPRE.exe roaming 0|1|2`, `uDPRE.exe roaming count N`.
+
 ## Nuzlocke (Beta)
 
 Beta: it works, but it is new and has had less play-testing than the rest of uDPRE - **Off** in the Nuzlocke window

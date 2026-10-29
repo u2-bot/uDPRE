@@ -192,8 +192,8 @@ def _ini_lines(p):
         return []
 
 
-def read_settings(root):
-    """-> {'lan': bool, 'port': int, 'peers': [str], 'bind': str, 'world': bool} as the game reads them (missing = defaults)"""
+def ini_values(root):
+    """-> {key: value} of pc_settings.ini (keys lower case; a repeated key: the first line wins, as the game reads it)"""
     vals = {}
     p = settings_path(root)
     for line in _ini_lines(p) if p else []:
@@ -201,6 +201,39 @@ def read_settings(root):
         k = k.strip().lower()
         if eq and not k.startswith('#') and k not in vals:
             vals[k] = v.strip()
+    return vals
+
+
+def write_keys(root, new, comment):
+    """sets the keys of `new` in pc_settings.ini, every other line kept as it is; keys not there yet go at the end in that
+    order, under the comment line; -> the file path"""
+    p = settings_path(root)
+    if not p:
+        raise OSError('no game in this folder yet (convert first)')
+    lines, done = [], set()
+    for line in _ini_lines(p):
+        k = line.strip().partition('=')[0].strip().lower()
+        if k in new and not k.startswith('#'):
+            if k not in done:
+                lines.append(f'{k}={new[k]}')
+                done.add(k)
+            continue
+        lines.append(line)
+    missing = [k for k in new if k not in done]
+    if missing:
+        lines.append(comment)
+        lines += [f'{k}={new[k]}' for k in missing]
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    tmp = p + '.part'
+    with open(tmp, 'w', encoding='utf-8', newline='\n') as f:
+        f.write('\n'.join(lines) + '\n')
+    os.replace(tmp, p)
+    return p
+
+
+def read_settings(root):
+    """-> {'lan': bool, 'port': int, 'peers': [str], 'bind': str, 'world': bool} as the game reads them (missing = defaults)"""
+    vals = ini_values(root)
     try:
         port = int(vals.get('lan_port', DEFAULT_PORT))
         if not 0 < port < 65536 - PORT_SPAN:
@@ -227,32 +260,12 @@ FOLLOW_CHOICES = ('Off - as the game (the party menu\'s pick, outdoors)',
 
 def write_settings(root, lan=True, port=DEFAULT_PORT, peers=(), bind='', world=True, follow=1):
     """sets the lan keys, world and follow in pc_settings.ini, every other line kept as it is; -> the file path"""
-    p = settings_path(root)
-    if not p:
-        raise OSError('no game in this folder yet (convert first)')
     new = {'lan': '1' if lan else '0', 'lan_port': str(int(port)), 'lan_peers': ','.join(peers), 'lan_bind': bind.strip(),
            'world': '1' if world else '0', 'follow': str(follow if follow in (0, 1, 2) else 1)}
-    lines, done = [], set()
-    for line in _ini_lines(p):
-        k = line.strip().partition('=')[0].strip().lower()
-        if k in new and not k.startswith('#'):
-            if k not in done:
-                lines.append(f'{k}={new[k]}')
-                done.add(k)
-            continue
-        lines.append(line)
-    missing = [k for k in ('lan', 'lan_port', 'lan_peers', 'lan_bind', 'world', 'follow') if k not in done]
-    if missing:
-        lines.append('# LAN play (uDPRE): lan = 1 | 0; lan_port = first port (UDP + TCP, 8 in a row); lan_peers = addresses; '
-                     'lan_bind = one adapter; world = 1 | 0 (see the other players in the overworld); '
-                     'follow = 0 | 1 | 2 (following Pokemon: as the game | the lead outdoors | the lead everywhere it fits)')
-        lines += [f'{k}={new[k]}' for k in missing]
-    os.makedirs(os.path.dirname(p), exist_ok=True)
-    tmp = p + '.part'
-    with open(tmp, 'w', encoding='utf-8', newline='\n') as f:
-        f.write('\n'.join(lines) + '\n')
-    os.replace(tmp, p)
-    return p
+    return write_keys(root, new, '# LAN play (uDPRE): lan = 1 | 0; lan_port = first port (UDP + TCP, 8 in a row); '
+                                 'lan_peers = addresses; lan_bind = one adapter; world = 1 | 0 (see the other players in the '
+                                 'overworld); follow = 0 | 1 | 2 (following Pokemon: as the game | the lead outdoors | the lead '
+                                 'everywhere it fits)')
 
 
 # --- the world host -----------------------------------------------------------------------------------------------------------
