@@ -4,7 +4,7 @@ import socket
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from . import lan
+from . import lan, winfit
 
 
 def local_addresses():
@@ -26,10 +26,11 @@ class LanDialog:
         self.on_change = on_change
         self.win = tk.Toplevel(parent)
         self.win.title('LAN play (Beta) - ' + title)
-        self.win.geometry('720x760')
-        self.win.minsize(600, 520)
+        winfit.fit(self.win, 720, 760, 600, 520)
         self.win.transient(parent)
         s = lan.read_settings(root_dir)
+        btns = ttk.Frame(self.win)
+        btns.pack(side='bottom', fill='x', padx=12, pady=10)       # before the content: a short window cuts it, not these
 
         ttk.Label(self.win, text='LAN play', font=('Segoe UI', 12, 'bold')).pack(anchor='w', padx=12, pady=(10, 2))
         sup = lan.player_supports(root_dir)
@@ -112,8 +113,6 @@ class LanDialog:
                            'game, the chat box\'s player list (P) shows games nearby that cannot join you, and why.',
                   foreground='#555', wraplength=680, justify='left').pack(anchor='w', padx=8, pady=(0, 6))
 
-        btns = ttk.Frame(self.win)
-        btns.pack(side='bottom', fill='x', padx=12, pady=10)
         self.saved = ttk.Label(btns, text='', foreground='#555')
         self.saved.pack(side='left')
         ttk.Button(btns, text='Close', command=self.win.destroy).pack(side='right')

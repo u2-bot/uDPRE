@@ -144,11 +144,14 @@ The overworld's wild Pokemon walk around you, the way the Grand Underground's do
   Pokemon to fight. The Poke Radar's shaking grass, a wandering legendary and the double battles of a partner travelling
   with you stay as they are.
 
-They come from the area's own encounter table (the same species, levels and time of day; a shiny shows as one), on land
-and, while you surf, on the water. Touching one plays the Underground's encounter. They appear and go only where the camera
-does not show them, and the others stay where they were over a battle. **At once** sets how many walk around you (1 - 8,
-default 4). The setting is in `pc_settings.ini` (`roaming=0|1|2`, `roaming_count=1..8`); the game reads it when it starts -
-no conversion is needed, but the game must come with uDPRE 0.5.2 or newer. From a command prompt:
+They come from the area's own encounter table (the same species, levels and time of day - with Luminescent, its own
+encounter slots; a shiny shows as one), on land and, while you surf, on the water. Touching one plays the Underground's
+encounter. They appear and go only where the camera does not show them, and the others stay where they were over a battle.
+A Repel keeps the random encounters away, not these: you see them and can walk around them, as in the Grand Underground.
+With a LAN Team Up partner close by, walking into one starts your two-against-two battle, as a random encounter does.
+**At once** sets how many walk around you (1 - 8, default 4). The setting is in `pc_settings.ini` (`roaming=0|1|2`,
+`roaming_count=1..8`); the game reads it when it starts - no conversion is needed, but the game must come with uDPRE 0.5.2
+or newer. From a command prompt:
 `uDPRE.exe roaming show`, `uDPRE.exe roaming 0|1|2`, `uDPRE.exe roaming count N`.
 
 ## Nuzlocke (Beta)

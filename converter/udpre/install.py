@@ -387,8 +387,9 @@ def switch_shader_ids(shaders_bundle):
     return out
 
 
-def default_workers():
-    n = os.cpu_count() or 2
+def memory_free():
+    """-> (free RAM, free commit) in bytes, or None: commit = what Windows can still hand out (RAM + page file); a PC with
+    a small page file runs out of it before the RAM looks full"""
     try:
         import ctypes
 
@@ -397,12 +398,96 @@ def default_workers():
                                                                            ('t', 'a', 'tp', 'ap', 'tv', 'av', 'x')]
         m = M()
         m.l = ctypes.sizeof(M)
-        ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m))
-        # measured with 15 workers, biggest bundles first: one worker peaks at 1.26 GB, the average ~0.8 GB
-        ram_workers = int(m.a / 2 ** 30 / 1.5)
+        if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m)):
+            return None
+        return m.a, m.ap
     except Exception:
-        ram_workers = n
+        return None
+
+
+def default_workers():
+    n = os.cpu_count() or 2
+    mem = memory_free()
+    # measured with 15 workers, biggest bundles first: one worker peaks at 1.26 GB, the average ~0.8 GB
+    ram_workers = int(min(mem) / 2 ** 30 / 1.5) if mem else n
     return max(1, min(n - 1 if n > 2 else n, ram_workers, 16))
+
+
+def _gib(n):
+    return f'{n / 2 ** 30:.1f} GB'
+
+
+DIED = 'the helper process converting it stopped'
+
+
+def helpers_stopped_text(why):
+    from . import advice
+    return advice.text(
+        'uDPRE\'s helper processes keep stopping, whatever file they work on: Windows ended them (it ran out of memory) or '
+        'another program did (an antivirus)',
+        ['Close other programs (browser, games, launchers) and press Convert again: uDPRE goes on where it stopped',
+         'If an antivirus runs on this PC, add the uDPRE folder to its exclusions (or allow uDPRE.exe), then press Convert '
+         'again',
+         'Restart the PC and press Convert again before opening anything else',
+         'If nothing helps, report it with the lines of the log in the uDPRE window'],
+        details=why)
+
+
+def run_pool(fn, jobs, workers, log, initializer=None, initargs=(), died=None):
+    """yields fn(job) for every job, run in up to `workers` processes, in the order they finish. A worker that dies (Windows
+    out of memory, an antivirus or another program ending it, a crash) breaks the whole pool: what is not done yet runs
+    again in a new pool with half the workers, down to one. A job a lone worker dies on twice is given up: yields
+    died(job, why) for it when `died` is given (else it is left out). A lone worker that dies three pools in a row before
+    finishing anything cannot run at all: ConvertError (helpers_stopped_text)."""
+    import signal
+    from concurrent.futures.process import BrokenProcessPool
+    left = list(jobs)
+    strikes = {}
+    idle = 0
+    while left:
+        n = max(1, min(workers, len(left)))
+        finished = set()
+        broken = False
+        procs = []
+        ex = cf.ProcessPoolExecutor(max_workers=n, initializer=initializer, initargs=initargs)
+        try:
+            futs = {ex.submit(fn, j): i for i, j in enumerate(left)}
+            procs = list((getattr(ex, '_processes', None) or {}).values())
+            for f in cf.as_completed(futs):
+                if isinstance(f.exception(), BrokenProcessPool):
+                    broken = True
+                    continue
+                finished.add(futs[f])
+                yield f.result()
+        finally:
+            ex.shutdown(wait=True, cancel_futures=True)
+        left = [j for i, j in enumerate(left) if i not in finished]
+        if not broken:
+            continue
+        # the pool ends the workers still alive after a break (-SIGTERM); the one that died has its own code (0 = its
+        # start failed)
+        codes = sorted({p.exitcode for p in procs} - {None, -signal.SIGTERM})
+        mem = memory_free()
+        why = (f'exit code {", ".join(hex(c & 0xffffffff) for c in codes)}' if codes else 'no exit code') + \
+              (f'; free RAM {_gib(mem[0])}, free commit {_gib(mem[1])}' if mem else '')
+        if n > 1:
+            workers = max(1, n // 2)
+            log(f'a helper process stopped ({why}): {len(left)} file{"s go" if len(left) > 1 else " goes"} on with '
+                f'{workers} worker{"s" if workers > 1 else ""}')
+            continue
+        idle = 0 if finished else idle + 1
+        if idle >= 3:
+            raise ConvertError(helpers_stopped_text(why))
+        # one worker: it was working on the first job not done (a lone worker takes them in order)
+        bad = left[0]
+        strikes[id(bad)] = strikes.get(id(bad), 0) + 1
+        if strikes[id(bad)] < 2:
+            log(f'a helper process stopped ({why}): trying again')
+            continue
+        log(f'a helper process stopped twice on the same file ({why}): it is left out')
+        left = left[1:]
+        if died is not None:
+            yield died(bad, why)
 
 
 def remove_file(path, stop):
@@ -605,6 +690,11 @@ def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=
     cfg.update({'dump': data, 'mods': setup.mod_ids, 'options': opts, 'started_version': CONVERT_VERSION})
     cfg.pop('complete_version', None)
     save_config(p, cfg)
+    # the chosen game code goes in first: a conversion that stops part-way (a helper stopped, a full disk, the PC turned off)
+    # still leaves the game of this mod choice with its own save folder - never the unmodded files an update copied in
+    progress('player files', 0, 3)
+    apply_player(p, setup, cfg, log)
+    save_config(p, cfg)
     workers = workers or default_workers()
     from .shaderpack import ShaderPack
     pack = ShaderPack(setup.pack)
@@ -659,19 +749,22 @@ def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=
         dl.flush()
         if convert:
             keys = {rel: key for rel, _, key in convert}
-            with cf.ProcessPoolExecutor(max_workers=workers, initializer=_init, initargs=(setup.pack, ids)) as ex:
-                jobs = [(s.path, os.path.join(p.aa_out, *rel.split('/')), rel, s.mod is None) for rel, s, _ in convert]
-                for rel, st, err, dt in ex.map(_job, jobs, chunksize=1):
-                    k += 1
-                    if err:
-                        errors.append((rel, err))
-                        log(f'FAILED {rel}: {err.splitlines()[0]}')
-                    else:
-                        dl.write(f'{rel}\t{st.get("bytes", 0)}\t{keys[rel]}\n')
-                        dl.flush()
-                        for key2, v in st.items():
-                            totals[key2] = totals.get(key2, 0) + v
-                    progress('bundles', k, total_n)
+            jobs = [(s.path, os.path.join(p.aa_out, *rel.split('/')), rel, s.mod is None) for rel, s, _ in convert]
+            # a helper that dies (out of memory, ended by an antivirus ...) no longer ends the run: the rest goes on with
+            # fewer helpers (run_pool); a file a lone helper dies on twice is a failed file below
+            for rel, st, err, dt in run_pool(_job, jobs, workers, log, initializer=_init, initargs=(setup.pack, ids),
+                                             died=lambda j, why: (j[2], None, f'{DIED} ({why})', 0)):
+                k += 1
+                if err:
+                    errors.append((rel, err))
+                    log(f'FAILED {rel}: {err.splitlines()[0]}')
+                else:
+                    dl.write(f'{rel}\t{st.get("bytes", 0)}\t{keys[rel]}\n')
+                    dl.flush()
+                    for key2, v in st.items():
+                        totals[key2] = totals.get(key2, 0) + v
+                progress('bundles', k, total_n)
+    n_died = sum(1 for _rel, err in errors if err.startswith(DIED))
     if errors:
         # a mod's bundle that does not even load on its own (a damaged file the mod ships) is made from the layer below
         from .merge import _loads
@@ -680,7 +773,7 @@ def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=
             for rel, err in errors:
                 s = want[rel][0]
                 lower = [x for x in stack.all_sources.get(modlib.AA + '/' + rel, []) if x is not s and x.kind == 'switch']
-                if s.mod is None or _loads(s.path) or not lower:
+                if err.startswith(DIED) or s.mod is None or _loads(s.path) or not lower:
                     still.append((rel, err))
                     continue
                 below = lower[-1]
@@ -712,6 +805,10 @@ def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=
                 from_mods.setdefault(names.get(s.mod, s.mod), []).append(rel)
         steps = ['Press Convert again: only the files that failed are made again (a full disk or a busy PC can stop a '
                  'few of them)']
+        if n_died:
+            steps.append(f'{n_died} of them stopped the helper process converting them: Windows ended it (it ran out of '
+                         f'memory) or another program did (an antivirus) - close other programs before pressing Convert, '
+                         f'and add the uDPRE folder to the antivirus\'s exclusions')
         for n, v in from_mods.items():
             steps.append(f'{len(v)} of them come from {n}: if they fail again, that mod\'s files are damaged - download '
                          f'it again and replace its folder, or untick it')
@@ -722,8 +819,6 @@ def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=
         raise ConvertError(advice.text(f'{len(errors)} of the game files could not be converted', steps))
     write_done_map(p, done_map(p))
     from . import player
-    progress('player files', 0, 3)
-    apply_player(p, setup, cfg, log)
     progress('player files', 1, 3)
     st = player.convert_resources(stack.player_source('resources.assets'), stack.player_source('resources.assets.resS'),
                                   p.out, pack, ids)

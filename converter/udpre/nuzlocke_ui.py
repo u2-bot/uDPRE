@@ -3,7 +3,7 @@ import tkinter as tk
 import webbrowser
 from tkinter import messagebox, ttk
 
-from . import nuzlocke as nz
+from . import nuzlocke as nz, winfit
 
 
 class NuzlockeDialog:
@@ -13,8 +13,7 @@ class NuzlockeDialog:
         self.on_change = on_change
         self.win = tk.Toplevel(parent)
         self.win.title('Nuzlocke (Beta) - ' + title)
-        self.win.geometry('760x720')
-        self.win.minsize(640, 520)
+        winfit.fit(self.win, 760, 720, 640, 520)
         self.win.transient(parent)
         self.vars = {}
         self.values = nz.read(root_dir)
@@ -40,6 +39,8 @@ class NuzlockeDialog:
         self.preset_label = ttk.Label(prow, text='', foreground='#555')
         self.preset_label.pack(side='left', padx=(12, 0))
 
+        btns = ttk.Frame(self.win)
+        btns.pack(side='bottom', fill='x', padx=12, pady=10)       # before the tabs: a short window cuts them, not these
         book = ttk.Notebook(self.win)
         book.pack(fill='both', expand=True, padx=12, pady=4)
         rules = ttk.Frame(book)
@@ -52,8 +53,6 @@ class NuzlockeDialog:
         self.build_run(run)
         self.build_honor(honor)
 
-        btns = ttk.Frame(self.win)
-        btns.pack(fill='x', padx=12, pady=10)
         self.saved = ttk.Label(btns, text='', foreground='#555')
         self.saved.pack(side='left')
         ttk.Button(btns, text='Close', command=self.win.destroy).pack(side='right')

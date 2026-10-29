@@ -328,15 +328,14 @@ class RefIndex:
     def __init__(self):
         self.cache = {}
 
-    def prefetch(self, paths, workers=None):
+    def prefetch(self, paths, workers=None, log=print):
         todo = sorted({p for p in paths if p and p not in self.cache})
         if len(todo) < 32:
             return
-        import concurrent.futures as cf
-        from .install import default_workers
-        with cf.ProcessPoolExecutor(max_workers=workers or default_workers()) as ex:
-            for path, info in ex.map(_file_info, todo, chunksize=16):
-                self.cache[path] = info
+        from .install import default_workers, run_pool
+        # a helper that dies leaves its files out of the cache: info() reads them here when they are asked for
+        for path, info in run_pool(_file_info, todo, workers or default_workers(), log):
+            self.cache[path] = info
 
     def info(self, path):
         if path not in self.cache:
@@ -540,11 +539,11 @@ def _reference_pass(stack, report, keep, lower, out_root, log):
             first.update(dependents.get(name_of.get(rel), []))
         paths = {stack.index[out_rel(r)].path for r in first if out_rel(r) in stack.index}
         paths |= {lower[r].path for r in first if r in lower}
-        idx.prefetch(paths)
+        idx.prefetch(paths, log=log)
         res0 = _bundle_resolver(stack.index)
         res1 = _bundle_resolver(stack.index, low_paths)
         deps = {d for p in paths for d in idx.info(p)[2]}
-        idx.prefetch({res0(d) for d in deps} | {res1(d) for d in deps})
+        idx.prefetch({res0(d) for d in deps} | {res1(d) for d in deps}, log=log)
         for _ in range(8):
             res_now = _bundle_resolver(stack.index)
             res_low = _bundle_resolver(stack.index, low_paths)

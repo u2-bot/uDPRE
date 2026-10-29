@@ -8,7 +8,7 @@ import tkinter as tk
 import webbrowser
 from tkinter import filedialog, messagebox, ttk
 
-from . import __version__, install, mods as modlib
+from . import __version__, install, mods as modlib, winfit
 
 TITLE = f'uDPRE {__version__}'
 
@@ -21,23 +21,35 @@ class App:
         self.win = tk.Tk()
         base = install.release_info(self.paths).get('base_version')
         self.win.title(TITLE + (f' (game base v{base})' if base else ''))
-        self.win.geometry(f'700x{min(940, self.win.winfo_screenheight() - 80)}')
-        self.win.minsize(600, 800)
+        winfit.fit(self.win, 700, 940, 600, 480, centre=True)
         self.win.protocol('WM_DELETE_WINDOW', self.on_close)
         pad = {'padx': 12, 'pady': 6}
         self.head = ttk.Label(self.win, text='', font=('Segoe UI', 12, 'bold'))
         self.head.pack(anchor='w', **pad)
         self.info = ttk.Label(self.win, text='', wraplength=640, justify='left')
         self.info.pack(anchor='w', fill='x', **pad)
-        row = ttk.Frame(self.win)
+        row = self.dump_row = ttk.Frame(self.win)
         row.pack(fill='x', **pad)
+        # packed before the boxes: Play / Convert and the progress always keep their place, however short the window is (a
+        # small screen or Windows display scaling); the boxes scroll instead (fit_body)
+        btns = self.btns = ttk.Frame(self.win)
+        btns.pack(side='bottom', fill='x', **pad)
+        holder = ttk.Frame(self.win)
+        holder.pack(fill='x')
+        self.body_canvas = tk.Canvas(holder, height=40, highlightthickness=0, borderwidth=0)
+        self.body_scroll = ttk.Scrollbar(holder, orient='vertical', command=self.body_canvas.yview)
+        self.body_canvas.configure(yscrollcommand=self.body_scroll.set)
+        self.body_canvas.pack(side='left', fill='x', expand=True)
+        self.body = ttk.Frame(self.body_canvas)
+        self.body_id = self.body_canvas.create_window((0, 0), window=self.body, anchor='nw')
+        self.body_canvas.bind('<Configure>', lambda e: self.body_canvas.itemconfigure(self.body_id, width=e.width))
         cfg = install.load_config(self.paths)
         self.dump_var = tk.StringVar(value=cfg.get('dump', ''))
         self.dump_entry = ttk.Entry(row, textvariable=self.dump_var)
         self.dump_entry.pack(side='left', fill='x', expand=True)
         self.browse = ttk.Button(row, text='Browse...', command=self.pick)
         self.browse.pack(side='left', padx=(8, 0))
-        self.mods_box = ttk.LabelFrame(self.win, text='Mods (packs in the "mods" folder)')
+        self.mods_box = ttk.LabelFrame(self.body, text='Mods (packs in the "mods" folder)')
         self.mods_box.pack(fill='x', **pad)
         # the pack list scrolls once it is taller than MODS_HEIGHT (sub-options open under a ticked pack)
         holder = ttk.Frame(self.mods_box)
@@ -74,7 +86,7 @@ class App:
         self.merge_text = ttk.Label(self.merge_row, text='', foreground='#555', wraplength=520, justify='left')
         self.merge_text.pack(side='left')
         self.merge_btn = ttk.Button(self.merge_row, text='Merge conflicts...', command=self.show_merge)
-        self.edits_box = ttk.LabelFrame(self.win, text='Your edits: Editor & Randomizer (Beta)')
+        self.edits_box = ttk.LabelFrame(self.body, text='Your edits: Editor & Randomizer (Beta)')
         self.edits_box.pack(fill='x', **pad)
         erow = ttk.Frame(self.edits_box)
         erow.pack(fill='x', padx=8, pady=6)
@@ -85,7 +97,7 @@ class App:
         self.edits_note = ttk.Label(erow, text='', foreground='#555')
         self.edits_note.pack(side='left', padx=(12, 0))
         from . import roaming
-        self.wild_box = ttk.LabelFrame(self.win, text='Wild Pokemon you can see: walk into one to battle it (Beta)')
+        self.wild_box = ttk.LabelFrame(self.body, text='Wild Pokemon you can see: walk into one to battle it (Beta)')
         self.wild_box.pack(fill='x', **pad)
         wrow = ttk.Frame(self.wild_box)
         wrow.pack(fill='x', padx=8, pady=6)
@@ -101,7 +113,7 @@ class App:
         self.wild_note = ttk.Label(wrow, text='', foreground='#555', wraplength=260, justify='left')
         self.wild_note.pack(side='left', padx=(12, 0))
         self.wild_refresh()
-        self.nz_box = ttk.LabelFrame(self.win, text='Challenge: Nuzlocke (Beta)')
+        self.nz_box = ttk.LabelFrame(self.body, text='Challenge: Nuzlocke (Beta)')
         self.nz_box.pack(fill='x', **pad)
         nrow = ttk.Frame(self.nz_box)
         nrow.pack(fill='x', padx=8, pady=6)
@@ -109,7 +121,7 @@ class App:
         self.nz_note = ttk.Label(nrow, text='', foreground='#555')
         self.nz_note.pack(side='left', padx=(12, 0))
         self.nz_refresh()
-        self.lan_box = ttk.LabelFrame(self.win, text='Play together: LAN (Beta)')
+        self.lan_box = ttk.LabelFrame(self.body, text='Play together: LAN (Beta)')
         self.lan_box.pack(fill='x', **pad)
         lrow = ttk.Frame(self.lan_box)
         lrow.pack(fill='x', padx=8, pady=6)
@@ -126,10 +138,11 @@ class App:
         self.stage.pack(anchor='w', **pad)
         self.bar = ttk.Progressbar(self.win, mode='determinate', maximum=100)
         self.bar.pack(fill='x', **pad)
-        btns = ttk.Frame(self.win)
-        btns.pack(side='bottom', fill='x', **pad)            # packed before the log: the buttons always stay visible
         self.log = tk.Text(self.win, height=6, wrap='word', state='disabled', font=('Consolas', 9))
         self.log.pack(fill='both', expand=True, **pad)
+        for w in (self.body, self.info):
+            w.bind('<Configure>', lambda _e: self.fit_body())
+        self.win.bind('<Configure>', lambda e: e.widget is self.win and self.fit_body())
         base = install.release_info(self.paths).get('base_version')
         ttk.Label(btns, text=f'uDPRE {__version__}' + (f'  ·  game base v{base}' if base else ''),
                   foreground='#666').pack(side='left')
@@ -164,10 +177,31 @@ class App:
 
     def wheel(self, e):
         w = self.win.winfo_containing(e.x_root, e.y_root)
-        while w is not None and w is not self.mod_canvas:
+        while w is not None and w is not self.mod_canvas and w is not self.body_canvas:
             w = w.master
         if w is self.mod_canvas and self.mod_rows.winfo_reqheight() > self.MODS_HEIGHT:
             self.mod_canvas.yview_scroll(-1 if e.delta > 0 else 1, 'units')
+        elif w is not None and self.body_scroll.winfo_manager():
+            self.body_canvas.yview_scroll(-1 if e.delta > 0 else 1, 'units')
+
+    LOG_MIN = 4         # lines of the log kept when the window is short
+
+    def fit_body(self):
+        """the boxes' area is as tall as the boxes when the window has the room; else it gets what is left after the header,
+        the progress, the buttons and LOG_MIN lines of the log, and scrolls"""
+        need = self.body.winfo_reqheight()
+        rest = sum(w.winfo_reqheight() + 12 for w in (self.head, self.info, self.dump_row, self.stage, self.bar, self.btns))
+        rest += self.log.winfo_reqheight() * self.LOG_MIN // int(self.log.cget('height')) + 12
+        h = max(80, min(need, self.win.winfo_height() - rest))
+        if h != int(self.body_canvas.cget('height')):       # only on a change: no <Configure> loop
+            self.body_canvas.configure(height=h)
+        self.body_canvas.configure(scrollregion=(0, 0, 0, need))
+        if need > h:
+            if not self.body_scroll.winfo_manager():
+                self.body_scroll.pack(side='right', fill='y')
+        elif self.body_scroll.winfo_manager():
+            self.body_scroll.pack_forget()
+            self.body_canvas.yview_moveto(0)
 
     def load_mods(self):
         self.found, self.problems = modlib.discover(self.paths.mods, install.load_config(self.paths).get('sources'))
@@ -400,7 +434,7 @@ class App:
             rep = {}
         top = tk.Toplevel(self.win)
         top.title('Console mods merged with the other mods')
-        top.geometry('980x560')
+        winfit.fit(top, 980, 560)
         ttk.Label(top, text='Files that console mods share with other mods are merged object by object. Where both '
                             'changed the same value, the upper mod wins; double-click a row to keep the lower mod\'s '
                             'object instead (press Apply afterwards).', wraplength=940, justify='left').pack(

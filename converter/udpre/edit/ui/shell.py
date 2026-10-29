@@ -5,6 +5,7 @@ import importlib
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from ... import winfit
 from ..session import Session
 from . import theme
 from .base import Choices
@@ -46,8 +47,7 @@ class EditorApp:
     def __init__(self, root_dir, master=None, mod_ids=None, options=None, on_change=None):
         self.win = tk.Toplevel(master) if master is not None else tk.Tk()
         self.win.title(TITLE)
-        self.win.geometry('1360x860')
-        self.win.minsize(1120, 700)
+        winfit.fit(self.win, 1360, 860, 1120, 700)
         self.win.configure(bg=C['bg'])
         theme.setup(self.win)
         self.on_change = on_change

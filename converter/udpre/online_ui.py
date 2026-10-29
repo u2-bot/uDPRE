@@ -2,6 +2,8 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from . import winfit
+
 STATE_TEXT = {'installed': 'installed', 'update': 'update ready', 'available': 'not installed',
               'managed': 'installed (linked folder - updated where it lives)'}
 
@@ -12,7 +14,7 @@ class GetModsDialog:
         self.app = app
         self.win = tk.Toplevel(app.win)
         self.win.title('Get mods - ' + app.win.title())
-        self.win.geometry('720x560')
+        winfit.fit(self.win, 720, 560)
         self.win.transient(app.win)
         top = ttk.Frame(self.win)
         top.pack(fill='x', padx=12, pady=(10, 4))

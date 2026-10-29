@@ -397,6 +397,29 @@ def remove_pack(p, pack_id, path):
 
 # --- uDPRE itself -----------------------------------------------------------------------------------------------------
 
+def keep_pack_player_files(p, src):
+    """A pack's game code (Luminescent, Dechibified ...) has replaced some of our player files in the uDPRE folder. The update
+    must not copy ours back over them: until the conversion after the update puts the pack's new files in place, the game
+    would start as the unmodded one, with the unmodded game's save folder - empty for a pack player, who then sees no save
+    (and a conversion that stops early leaves it so). Each such file of the update `src` (an unpacked release) goes to its
+    udpre/players/vanilla instead, where the converter keeps our copies; -> the moved paths (root-relative)."""
+    from .install import _load_json, sha1
+    old = _load_json(p.player_files, {}).get('files', {})
+    new = _load_json(os.path.join(src, 'udpre', 'player_files.json'), {}).get('files', {})
+    keep_dir = os.path.join(src, os.path.relpath(p.vanilla_player, p.root))
+    moved = []
+    for rel in sorted(new):
+        cur = os.path.join(p.root, *rel.split('/'))
+        s = os.path.join(src, *rel.split('/'))
+        if rel not in old or not os.path.isfile(cur) or not os.path.isfile(s) or sha1(cur) == old[rel]:
+            continue        # ours (or new): the update replaces it as usual
+        dst = os.path.join(keep_dir, *rel.split('/'))
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        os.replace(s, dst)
+        moved.append(rel)
+    return moved
+
+
 def prepare_self_update(p, relay, u, log=print, progress=None, stop=None):
     """Download + unpack uDPRE's new build next to it; -> the command that applies it after this process ends."""
     import zipfile
@@ -420,6 +443,10 @@ def prepare_self_update(p, relay, u, log=print, progress=None, stop=None):
     src = os.path.join(new, tops[0]) if len(tops) == 1 and os.path.isdir(os.path.join(new, tops[0])) else new
     if not os.path.isfile(os.path.join(src, 'uDPRE.exe')):
         raise OnlineError('the uDPRE download has no uDPRE.exe')
+    kept = keep_pack_player_files(p, src)
+    if kept:
+        log(f'uDPRE {u.get("version", "")}: the game files of your mod choice ({len(kept)}) stay in place until the next '
+            f'conversion puts their new versions in')
     cmd = os.path.join(d, 'apply_update.cmd')
     failed = os.path.join(d, 'update_failed.txt')
     if os.path.exists(failed):
