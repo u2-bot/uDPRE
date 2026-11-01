@@ -208,12 +208,16 @@ your save, story and world are yours. Walk up to another player and press A:
   loses a Pokemon (an unfinished trade is settled the next time you two meet).
 - **Team Up**: walk up to your friend, press A, pick **Team Up**, and your friend accepts. While you are on the same map and
   within about 20 m of each other, a wild Pokemon or an ordinary Trainer that one of you runs into becomes a battle
-  for both of you (two against two). Your friend's game joins by itself: the one who ran into it sees "Waiting for ...", the
-  other "Joining ...'s battle". If the friend is busy (in a menu or an event) or too far away, the battle goes on alone. Each of
+  for both of you (two against two) if the other one wants it. The one who ran into it sees "Waiting for ... to join" (or
+  picks **Battle alone**); the other keeps playing and gets a note at the bottom of the screen for 5 seconds ("... ran into
+  wild ...!  RT: join (5)") - **RT** on a controller or **P** on the keyboard joins. No press in time, or busy in a battle of
+  their own, too far away or on another map, and the battle goes on alone. Each of
   you gains experience for your own Pokemon and the full prize money; a catch
   belongs to whoever threw the ball, and both of you register what you saw. While both wild Pokemon are up, a Poke Ball asks
   which one to throw at; catching one does not end the battle while the other is still up, so either of you can catch the
-  second too (two catches = two Pokedex screens afterwards). The Trainer counts as beaten for the one who ran into them. Gym
+  second too (two catches = two Pokedex screens afterwards). A Trainer you beat together counts as beaten for both of you
+  (Team Galactic stays part of each player's own story);
+  one the joining player had already beaten pays them no prize money (experience as usual). Gym
   Leaders, the Elite Four, the Champion, rivals, a Trainer with a single Pokemon, legendary Pokemon (the roaming ones too), and
   fishing, honey, Safari and Poke Radar encounters stay solo. In a Nuzlocke run each game keeps its own
   run's rules for its own Pokemon (fainting, level cap, battle items, clauses); a team wild battle uses up the area's encounter
