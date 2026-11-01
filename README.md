@@ -189,11 +189,12 @@ nuzlocke|hardcore|off`, `uDPRE.exe nuzlocke set level_cap=hard battle_items=ball
 
 ## LAN play (Beta)
 
-Everything the Switch plays over local wireless, played with other uDPRE players on your network: the **Union Room**
-(greetings, trades, battles, records, Ball Capsules), the **Colosseum** (single, double and four-player multi battles), the
-**Grand Underground** (up to 8 players: digging together, Secret Bases) and **Super Contest Shows**. In the game, pick local
-communication (Local Play) where the game offers it, as on the Switch. Internet features (GTS, Wonder Trade, online battles,
-Mystery Gift over the internet) still need Nintendo's servers and stay offline.
+Everything the Switch plays over local wireless, played with other uDPRE players on your network or, with one reachable player,
+over the internet (see **Over the internet** below): the **Union Room** (greetings, trades, battles, records, Ball Capsules), the
+**Colosseum** (single, double and four-player multi battles), the **Grand Underground** (up to 8 players: digging together, Secret
+Bases) and **Super Contest Shows**. In the game, pick local communication (Local Play) where the game offers it, as on the Switch.
+Nintendo's own online features (GTS, Wonder Trade, online battles, Mystery Gift over the internet) still need Nintendo's servers
+and stay offline.
 
 **Overworld (Beta):** players of the same game also see each other walking around Sinnoh - in the same city or on the same
 route, in their own outfits, with their names, cycling, surfing and with their following Pokemon. Everyone keeps their own game:
@@ -205,12 +206,16 @@ your save, story and world are yours. Walk up to another player and press A:
   partners join by themselves (if one of them can't right now, it is called off for all four).
 - **Trade**: the Union Room's trade, anywhere. Both games save it as one step: a crash or a lost link mid-trade never copies or
   loses a Pokemon (an unfinished trade is settled the next time you two meet).
-- **Team Up**: while you are close together, a wild Pokemon or an ordinary Trainer that one of you runs into becomes a battle
-  for both of you (two against two). Each of you gains experience for your own Pokemon and the full prize money; a catch
+- **Team Up**: walk up to your friend, press A, pick **Team Up**, and your friend accepts. While you are on the same map and
+  within about 20 m of each other, a wild Pokemon or an ordinary Trainer that one of you runs into becomes a battle
+  for both of you (two against two). Your friend's game joins by itself: the one who ran into it sees "Waiting for ...", the
+  other "Joining ...'s battle". If the friend is busy (in a menu or an event) or too far away, the battle goes on alone. Each of
+  you gains experience for your own Pokemon and the full prize money; a catch
   belongs to whoever threw the ball, and both of you register what you saw. While both wild Pokemon are up, a Poke Ball asks
   which one to throw at; catching one does not end the battle while the other is still up, so either of you can catch the
   second too (two catches = two Pokedex screens afterwards). The Trainer counts as beaten for the one who ran into them. Gym
-  Leaders, the Elite Four, the Champion, rivals and legendary Pokemon stay solo. In a Nuzlocke run each game keeps its own
+  Leaders, the Elite Four, the Champion, rivals, a Trainer with a single Pokemon, legendary Pokemon (the roaming ones too), and
+  fishing, honey, Safari and Poke Radar encounters stay solo. In a Nuzlocke run each game keeps its own
   run's rules for its own Pokemon (fainting, level cap, battle items, clauses); a team wild battle uses up the area's encounter
   for both of you, either of the two wild Pokemon may be the one you catch, and once you have caught yours the other one is
   your partner's to catch. The Poke Balls and medicine your partner uses come out of their own bag, and their ball is thrown
@@ -232,9 +237,11 @@ your save, story and world are yours. Walk up to another player and press A:
 party menu's choice, outdoors), 1 the lead by itself where the game lets one follow (the default), 2 the lead everywhere it fits,
 caves and buildings too. Others see your follower as you see theirs.
 
-**World host:** the overworld is hosted by one of the players' games and moves to another when that player quits; a world host
-(`uDPRE World Host.exe`, the LAN window's **Start a world host**, `uDPRE.exe lan host`) keeps it up on a PC that stays on - it
-plays no game of its own. Turn the overworld off with the **Overworld** box in the LAN window (`uDPRE.exe lan world off`).
+**World host:** the overworld is hosted by one of the players' games. On a network it moves to another game when that player
+quits. Over the internet only the reachable player can host it, so when that player quits the others lose the world, and any
+room running through it. A world host (`uDPRE World Host.exe`, the LAN window's **Start a world host**, `uDPRE.exe lan host`)
+keeps it up on a PC that stays on - it plays no game of its own. Turn the overworld off with the **Overworld** box in the LAN
+window (`uDPRE.exe lan world off`).
 
 - **Same game, not the same mods**: players meet when they play the same game - Brilliant Diamond or Luminescent, the same
   uDPRE version and the same Pokemon, battle, contest and Underground data. Cosmetic and own-world mods (Darker UI, Shiny Icons,
@@ -244,11 +251,20 @@ plays no game of its own. Turn the overworld off with the **Overworld** box in t
   wardrobe outfit shows to other Dechibified players (overworld, battles, trainer cards) and to everyone else as their last
   ordinary outfit, and in a Team Up Trainer battle the Trainer's Pokemon are the
   leader's (an Easy Mode leader brings Easy Mode Trainers). **LAN play...** shows this game's build.
-- **Windows Firewall**: the player who opens a room must let others reach the game. Windows asks the first time; if it was
-  answered Cancel, or the network is a VPN or "public" one, press **Allow LAN play...** in the LAN window.
-- **Over the internet**: put all players on one virtual network (ZeroTier, Radmin VPN, Hamachi) - nothing to set. With
-  Tailscale, or a host with a forwarded port (UDP + TCP 39290-39297, and 39310-39317 for the overworld), add the host's
-  address under **Friends' addresses**.
+- **Windows Firewall**: the PC that hosts the world must let others reach it. Windows asks the first time; if it was answered
+  Cancel, or the network is a VPN or "public" one, press **Allow LAN play...** in the LAN window. That button covers the game;
+  a world host program is allowed through Windows' own question the first time it starts.
+- **Over the internet**: there is no uDPRE server, so **one** player has to be reachable. Everyone joins that player's world, and
+  Team Up, battles, the Union Room, the Colosseum, the Underground and contests all travel through the overworld link when two
+  players cannot reach each other directly. All players need the overworld on. Two ways:
+  - **Port forwarding, no VPN**: one player forwards UDP + TCP 39310-39317 on their router to their PC. Everyone else adds
+    that player's public address under **Friends' addresses**; the forwarding player adds nothing. Start in any order.
+  - **A virtual network**: ZeroTier, Radmin VPN or Hamachi need nothing else. With Tailscale, the others add one player's
+    address under **Friends' addresses**.
+
+  If nobody can forward a port (some internet providers do not allow it), you need a virtual network. A room running through the
+  overworld link passes through the world host, so it is slower than a direct link. With the overworld turned off there is no such
+  link: a room then needs UDP + TCP 39290-39297 open on the PC of the player who opens it, and the others need that address.
 - From a command prompt: `uDPRE.exe lan show`, `uDPRE.exe lan peers 100.64.0.5`, `uDPRE.exe lan firewall`.
 
 ## What is in a release

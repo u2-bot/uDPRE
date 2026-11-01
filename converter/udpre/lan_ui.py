@@ -59,8 +59,10 @@ class LanDialog:
         ttk.Label(box, text='Friends\' addresses:').grid(row=2, column=0, sticky='w', padx=8, pady=(6, 0))
         self.peers_var = tk.StringVar(value=', '.join(s['peers']))
         ttk.Entry(box, textvariable=self.peers_var).grid(row=2, column=1, columnspan=2, sticky='we', padx=(0, 8), pady=(6, 0))
-        ttk.Label(box, text='Only needed when the game cannot find them by itself: over Tailscale, or across the internet '
-                            '(their address, comma-separated). A LAN, ZeroTier, Radmin VPN or Hamachi needs nothing here.',
+        ttk.Label(box, text='Only needed when the game cannot find them by itself: over Tailscale, or across the internet. '
+                            'One reachable player is enough: forward UDP + TCP 39310-39317 on that router, and the others '
+                            'enter that address here (comma-separated). Rooms, battles and Team Up then travel through '
+                            'the overworld link. A LAN, ZeroTier, Radmin VPN or Hamachi needs nothing here.',
                   foreground='#555', wraplength=640, justify='left').grid(row=3, column=0, columnspan=3, sticky='w', padx=8)
         ttk.Label(box, text='Adapter:').grid(row=4, column=0, sticky='w', padx=8, pady=(6, 6))
         self.bind_var = tk.StringVar(value=s['bind'] or 'every adapter')
@@ -123,8 +125,8 @@ class LanDialog:
         if present:
             self.fw_note.config(text='Allowed: other players can reach this game.', foreground='#262')
         else:
-            self.fw_note.config(text='To host a room, Windows must let other players reach this game. Windows asks the first '
-                                     'time a room opens; if that was answered "Cancel", or on a VPN / public network, press '
+            self.fw_note.config(text='To host, Windows must let other players reach this game. Windows asks the first '
+                                     'time; if that was answered "Cancel", or on a VPN / public network, press '
                                      'Allow (it asks for administrator rights).', foreground='#333')
 
     def start_host(self):
