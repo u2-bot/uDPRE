@@ -31,7 +31,7 @@ Wild Pokemon you can see, Beta (they walk around the overworld, walk into one to
   uDPRE.exe roaming count N         how many at once (1 .. 8, default 4)
   uDPRE.exe roaming chase N         the percent of them that chase you (0 .. 100, default 25; the others only wander)
 LAN play, Beta (Union Room, Colosseum, Underground, contests with other uDPRE players; the game reads it when it starts):
-  uDPRE.exe lan [show]              the settings, this game's build and the firewall rule
+  uDPRE.exe lan [show]              the settings, this game's build and what Windows Firewall lets through
   uDPRE.exe lan on|off
   uDPRE.exe lan port N              first port (default 39290; UDP + TCP, 8 in a row)
   uDPRE.exe lan peers A[,B...]|-    friends' addresses searched directly (Tailscale, the internet); - = none
@@ -39,7 +39,8 @@ LAN play, Beta (Union Room, Colosseum, Underground, contests with other uDPRE pl
   uDPRE.exe lan world on|off        the overworld: see the other players walking around (battle, trade, team up with them)
   uDPRE.exe lan follow 0|1|2        following Pokemon: as the game | the lead outdoors | the lead everywhere it fits
   uDPRE.exe lan host                start a world host (keeps the overworld up while players come and go)
-  uDPRE.exe lan firewall            add the Windows Firewall rule (asks for administrator rights)
+  uDPRE.exe lan firewall            let the game and the world host through Windows Firewall on every network, turning off
+                                    the rules that block them (asks for administrator rights)
 Without --root the uDPRE folder is the one holding the executable (frozen) or the current folder.
 """
 import os
@@ -304,14 +305,21 @@ def lan_command(root, args):
               f'({lan.settings_path(root) or "no game here yet"})')
         print('game: ' + ('has LAN play' if sup else 'NO LAN play - convert with uDPRE 0.5.0' if sup is False else 'not converted'))
         print('build: ' + (f'{info.get("fingerprint", "")[:16]}  {info.get("label", "")}' if info else 'not written yet (convert)'))
-        fw = lan.firewall_rule_present(root)
-        print('firewall: ' + ('allowed' if fw else 'no rule yet (uDPRE.exe lan firewall)' if fw is False else 'cannot tell'))
+        for line in lan.firewall_summary(lan.firewall_status(root, root)):
+            print('firewall: ' + line.replace('Allow LAN play...', 'uDPRE.exe lan firewall'))
         return 0
     if sub == 'firewall':
-        ok = lan.allow_firewall(root)
-        print('Answer Windows\' administrator prompt to add the rule.' if ok else 'Windows did not start the prompt.')
+        print('Answer Windows\' administrator prompt: it turns off the rules that block the game and the world host, '
+              'and allows both on every network.')
+        ok = lan.allow_firewall(root, root, wait=True)
+        print('Done.' if ok else 'Not done (the prompt was answered No, or Windows refused).')
+        for line in lan.firewall_summary(lan.firewall_status(root, root)):
+            print('firewall: ' + line.replace('Allow LAN play...', 'uDPRE.exe lan firewall'))
         return 0 if ok else 1
     if sub == 'host':
+        for x in lan.firewall_status(root, root) or []:
+            if x[0] == 'the world host' and x[2] != 'allowed':
+                print('firewall: ' + lan.firewall_summary([x])[0].replace('Allow LAN play...', 'uDPRE.exe lan firewall'))
         ok = lan.start_world_host(root, root)
         print('World host started in its own window (close it to stop).' if ok else
               f'No world host here ({lan.HOST_EXE} comes with the uDPRE release).')

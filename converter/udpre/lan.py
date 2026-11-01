@@ -30,6 +30,11 @@ DEFAULT_PORT = 39290
 WORLD_PORT = 39310
 PORT_SPAN = 8
 RULE_NAME = 'uDPRE LAN play'
+HOST_RULE_NAME = 'uDPRE World Host'
+# the uDPRE version whose game player and LAN data this one plays with: lan.txt's release, so a uDPRE update that changes no
+# game code (the converter, the window, the README) still meets the players of that version. Raise it to __version__ with
+# every release that ships a new game player or World Host.
+LAN_RELEASE = '0.5.5'
 
 
 def path(root):
@@ -126,7 +131,6 @@ def code_of(chosen, player_id):
 def write(root, chosen, edits_digest, player_id='vanilla'):
     """-> the fingerprint written to lan.txt (the mod list; the game matches players by what they play -
     family, release and the shared game data, PcLanConfig - and shows this list only in words)"""
-    from . import __version__
     fp = fingerprint(chosen, edits_digest)
     p = path(root)
     os.makedirs(os.path.dirname(p), exist_ok=True)
@@ -137,7 +141,7 @@ def write(root, chosen, edits_digest, player_id='vanilla'):
     lines = ['# uDPRE LAN play - written by uDPRE at every conversion. Two games meet when they play the same game: same family,',
              '# same uDPRE release, same Pokemon / battle / contest / Underground data. Cosmetic mods may differ.',
              f'fingerprint={fp}', f'label={label(chosen, edits_digest)}', f'family={family_of(player_id)}',
-             f'release={__version__}', f'code={code_of(chosen, player_id)}']
+             f'release={LAN_RELEASE}', f'code={code_of(chosen, player_id)}']
     if tables:
         lines.append(f'dpr_tables={tables[:16]}')
     tmp = p + '.part'
@@ -304,42 +308,204 @@ def game_exe(root):
     return os.path.join(root, 'Dpr.exe')
 
 
-def firewall_rule_present(root):
-    """-> True / False / None (cannot tell): an inbound allow rule for this folder's Dpr.exe exists (ours or Windows' own)"""
-    exe = os.path.normcase(os.path.abspath(game_exe(root)))
+#
+# Windows asks the first time a program listens, with only "Private networks" ticked: Allow then also writes a BLOCK rule for
+# public networks (Cancel: block rules), and a block rule beats every allow rule. A PC whose network is "public" (often a server
+# or a wired PC; VPN adapters too) then drops everything from other players - a forwarded port from the internet included -
+# while the same program works over a network Windows counts as private. So the rules are read per program and per network kind,
+# through Windows' own firewall object (HNetCfg.FwPolicy2: no administrator rights, the same in every Windows language), and
+# "Allow LAN play..." turns off the block rules of the game and the world host and allows both on every network kind.
+
+FW_DOMAIN, FW_PRIVATE, FW_PUBLIC = 1, 2, 4
+FW_ALL = 0x7FFFFFFF
+FW_KINDS = ((FW_DOMAIN, 'work (domain)'), (FW_PRIVATE, 'private'), (FW_PUBLIC, 'public'))
+
+_FW_READ = r'''
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+$p = New-Object -ComObject HNetCfg.FwPolicy2
+'CUR ' + [int]$p.CurrentProfileTypes
+foreach ($r in $p.Rules) {
+  if ($r.Direction -eq 1 -and $r.Enabled -and $r.ApplicationName) { 'R ' + [int]$r.Action + ' ' + [int]$r.Profiles + ' ' + $r.ApplicationName }
+}
+'''
+
+_FW_ALLOW = r'''
+$ErrorActionPreference = 'Stop'
+$p = New-Object -ComObject HNetCfg.FwPolicy2
+function Norm($s) { try { [IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($s)).ToLowerInvariant() } catch { '' } }
+$bad = 0
+foreach ($it in $items) {
+  try {
+    $want = Norm $it[0]
+    $ours = $null
+    foreach ($r in @($p.Rules)) {
+      if ($r.Direction -ne 1 -or -not $r.ApplicationName -or (Norm $r.ApplicationName) -ne $want) { continue }
+      if ($r.Action -eq 0) { if ($r.Enabled) { $r.Enabled = $false } }
+      elseif ($r.Name -eq $it[1] -and $ours -eq $null) { $ours = $r }
+    }
+    if ($ours -eq $null) {
+      $ours = New-Object -ComObject HNetCfg.FWRule
+      $ours.Name = $it[1]
+      $ours.Description = $it[2]
+      $ours.ApplicationName = $it[0]
+      $ours.Direction = 1
+      $ours.Action = 1
+      $ours.Profiles = 0x7FFFFFFF
+      $ours.Enabled = $true
+      $p.Rules.Add($ours)
+    } else {
+      $ours.Profiles = 0x7FFFFFFF
+      $ours.Enabled = $true
+    }
+  } catch { $bad++ }
+}
+exit $bad
+'''
+
+
+def _ps_encoded(script):
+    import base64
+    return base64.b64encode(script.encode('utf-16-le')).decode('ascii')
+
+
+def _ps_quote(s):
+    return "'" + str(s).replace("'", "''") + "'"
+
+
+def _elevated_cmd(encoded, elevate=True):
+    """-> the command that runs an encoded script as administrator (Windows' prompt) and exits with its exit code; 99 when the
+    prompt was answered No or could not start (elevate=False: the same without the prompt, for tests)"""
+    ps = ("try { $q = Start-Process -FilePath powershell " + ("-Verb RunAs " if elevate else "") +
+          "-WindowStyle Hidden -Wait -PassThru -ErrorAction Stop -ArgumentList "
+          "'-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + encoded + "'; "
+          "if ($q -eq $null) { exit 99 }; exit $q.ExitCode } catch { exit 99 }")
+    return ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps]
+
+
+def _norm(p):
+    return os.path.normcase(os.path.abspath(os.path.expandvars(p)))
+
+
+def firewall_programs(root, app_dir=None):
+    """-> [(path, rule name, what it is)]: this folder's game and, when it is there, the world host"""
+    out = [(os.path.abspath(game_exe(root)), RULE_NAME, 'the game')]
+    host = world_host_exe(app_dir or root)
+    if host:
+        out.append((os.path.abspath(host), HOST_RULE_NAME, 'the world host'))
+    return out
+
+
+def read_firewall():
+    """-> (current network kinds bitmask, [(action 0 block / 1 allow, network kinds bitmask, program)]) of the enabled inbound
+    program rules, or None (cannot tell: no Windows Firewall, e.g. Proton)"""
     try:
-        out = subprocess.run(['netsh', 'advfirewall', 'firewall', 'show', 'rule', 'name=all', 'dir=in', 'verbose'],
-                             capture_output=True, text=True, timeout=30, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)).stdout
+        out = subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand',
+                              _ps_encoded(_FW_READ)], capture_output=True, timeout=60,
+                             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
     except (OSError, subprocess.SubprocessError):
         return None
-    enabled = allow = False
-    for line in out.splitlines() + ['']:
-        s = line.strip()
-        if not s:
-            enabled = allow = False
+    if out.returncode != 0:
+        return None
+    cur, rules = None, []
+    for line in out.stdout.decode('utf-8', 'replace').splitlines():
+        line = line.strip()
+        if line.startswith('CUR '):
+            try:
+                cur = int(line[4:])
+            except ValueError:
+                pass
+        elif line.startswith('R '):
+            bits = line[2:].split(' ', 2)
+            if len(bits) == 3:
+                try:
+                    rules.append((int(bits[0]), int(bits[1]), bits[2]))
+                except ValueError:
+                    pass
+    return None if cur is None else (cur, rules)
+
+
+def program_status(rules, exe, current=0):
+    """-> (status, kinds) for one program from read_firewall's rules. status: 'allowed' (every network kind it may meet:
+    private, public and work when this PC is on one), 'blocked' (a block rule on such a kind - kinds = the blocked kinds),
+    'partial' (allowed only on some - kinds = the missing ones), 'none' (no rule: Windows will ask)"""
+    want = FW_PRIVATE | FW_PUBLIC | (current & FW_DOMAIN)
+    me = _norm(exe)
+    allow = block = 0
+    for action, kinds, prog in rules:
+        try:
+            if _norm(prog) != me:
+                continue
+        except (TypeError, ValueError):
             continue
-        k, _, v = s.partition(':')
-        k, v = k.strip().lower(), v.strip()
-        if k == 'enabled':
-            enabled = v.lower() == 'yes'
-        elif k == 'action':
-            allow = v.lower() == 'allow'
-        elif k == 'program' and enabled and allow and os.path.normcase(v) == exe:
-            return True
-    return False
+        if action == 0:
+            block |= kinds
+        elif action == 1:
+            allow |= kinds
+    if block & want:
+        return 'blocked', block & want
+    if allow & want == want:
+        return 'allowed', 0
+    if allow:
+        return 'partial', want & ~allow
+    return 'none', want
 
 
-def allow_firewall(root):
-    """adds an inbound allow rule for this folder's Dpr.exe on every network kind (home, work, public - VPN adapters are often
-    'public'), through Windows' own administrator prompt. -> True when the prompt was started."""
-    exe = os.path.abspath(game_exe(root))
-    args = (f'advfirewall firewall add rule name="{RULE_NAME}" dir=in action=allow program="{exe}" enable=yes '
-            f'profile=any description="Overworld, Union Room, Colosseum, Underground and contests with other uDPRE players"')
-    ps = ('Start-Process -FilePath netsh -Verb RunAs -WindowStyle Hidden -Wait -ArgumentList '
-          + "'" + args.replace("'", "''") + "'")
+def kinds_text(kinds):
+    return ' and '.join(name for bit, name in FW_KINDS if kinds & bit) or 'no'
+
+
+def firewall_status(root, app_dir=None):
+    """-> [(what, path, status, kinds)] for this folder's game and world host, or None (cannot tell)"""
+    fw = read_firewall()
+    if fw is None:
+        return None
+    cur, rules = fw
+    return [(what, exe) + program_status(rules, exe, cur) for exe, _name, what in firewall_programs(root, app_dir)]
+
+
+def firewall_rule_present(root, app_dir=None):
+    """-> True (the game and the world host are allowed on every network kind) / False / None (cannot tell)"""
+    st = firewall_status(root, app_dir)
+    if st is None:
+        return None
+    return all(s == 'allowed' for _w, _p, s, _k in st)
+
+
+def firewall_summary(st):
+    """the firewall_status list in words, one line per program"""
+    if st is None:
+        return ['cannot tell (no Windows Firewall here, or Windows did not answer)']
+    out = []
+    for what, _exe, status, kinds in st:
+        if status == 'allowed':
+            out.append(f'{what}: allowed')
+        elif status == 'blocked':
+            out.append(f'{what}: BLOCKED on {kinds_text(kinds)} networks - nobody can reach it there, a forwarded port '
+                       'included (Allow LAN play... fixes it)')
+        elif status == 'partial':
+            out.append(f'{what}: allowed, but not on {kinds_text(kinds)} networks (Allow LAN play... fixes it)')
+        else:
+            out.append(f'{what}: no rule yet - Windows asks when it starts (Allow LAN play... allows it everywhere)')
+    return out
+
+
+def allow_firewall(root, app_dir=None, wait=False):
+    """through Windows' own administrator prompt: turns off the inbound BLOCK rules of this folder's Dpr.exe and world host
+    (Windows writes them when its first question is answered with only "Private" ticked, or Cancel) and allows both on every
+    network kind (home, work, public - VPN adapters are often 'public'). -> True when the prompt was started (wait=False), or
+    when it ran and every rule was made (wait=True)."""
+    desc = {RULE_NAME: 'Overworld, Union Room, Colosseum, Underground and contests with other uDPRE players',
+            HOST_RULE_NAME: 'The uDPRE world host: the overworld of every uDPRE player who joins this PC'}
+    # an ArrayList: @(@(a, b, c)) with one program would flatten into three strings
+    items = ''.join('[void]$items.Add(@(' + ', '.join(_ps_quote(x) for x in (exe, name, desc[name])) + '))\n'
+                    for exe, name, _what in firewall_programs(root, app_dir))
+    cmd = _elevated_cmd(_ps_encoded('$items = New-Object System.Collections.ArrayList\n' + items + _FW_ALLOW))
+    flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
     try:
-        subprocess.Popen(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps],
-                         creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-        return True
-    except OSError:
+        if not wait:
+            subprocess.Popen(cmd, creationflags=flags)
+            return True
+        return subprocess.run(cmd, capture_output=True, timeout=600, creationflags=flags).returncode == 0
+    except (OSError, subprocess.SubprocessError):
         return False

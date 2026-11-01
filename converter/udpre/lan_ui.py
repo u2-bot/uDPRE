@@ -86,16 +86,17 @@ class LanDialog:
         self.fw_note = ttk.Label(frow, text='', wraplength=470, justify='left')
         self.fw_note.pack(side='left')
         ttk.Button(frow, text='Allow LAN play...', command=self.allow).pack(side='right')
+        self.app_dir = app_dir
         self.fw_refresh()
 
-        self.app_dir = app_dir
         host = ttk.LabelFrame(self.win, text='World host')
         host.pack(fill='x', padx=12, pady=4)
         hrow = ttk.Frame(host)
         hrow.pack(fill='x', padx=8, pady=6)
         has_host = bool(app_dir and lan.world_host_exe(app_dir))
         ttk.Label(hrow, text=('Keeps the overworld up while players come and go: run it on a PC that stays on (it plays no '
-                              'game of its own and uses this folder\'s build). Windows asks to let it through the first time.')
+                              'game of its own and uses this folder\'s build). Press Allow LAN play... above first on that '
+                              'PC, or Windows may let it through on private networks only.')
                   if has_host else 'The world host comes with the uDPRE release (uDPRE World Host.exe).',
                   wraplength=470, justify='left').pack(side='left')
         ttk.Button(hrow, text='Start a world host', command=self.start_host,
@@ -104,12 +105,12 @@ class LanDialog:
         bb = ttk.LabelFrame(self.win, text='This game\'s build')
         bb.pack(fill='x', padx=12, pady=4)
         info = lan.read(root_dir)
-        text = (('Luminescent Platinum' if info.get('family') == 'lumi' else 'Brilliant Diamond') + ', uDPRE ' +
+        text = (('Luminescent Platinum' if info.get('family') == 'lumi' else 'Brilliant Diamond') + ', LAN play of uDPRE ' +
                 info.get('release', '?') + '\nmods: ' + info.get('label', '')) if info else \
             'Not written yet: convert once with uDPRE 0.5.0.'
         ttk.Label(bb, text=text, wraplength=680, justify='left').pack(anchor='w', padx=8, pady=(6, 2))
-        ttk.Label(bb, text='Players meet when they play the same game: Brilliant Diamond or Luminescent, the same uDPRE '
-                           'version and the same Pokemon, battle, contest and Underground data. Cosmetic and own-world mods '
+        ttk.Label(bb, text='Players meet when they play the same game: Brilliant Diamond or Luminescent, the same LAN '
+                           'play version (above) and the same Pokemon, battle, contest and Underground data. Cosmetic and own-world mods '
                            '(Darker UI, icons, translations, Dechibified, Easy Mode, shiny odds), the game language and '
                            'Nuzlocke rules may differ; No Balance, or edits to Pokemon, moves or items, must match. In the '
                            'game, the chat box\'s player list (P) shows games nearby that cannot join you, and why.',
@@ -121,26 +122,47 @@ class LanDialog:
         ttk.Button(btns, text='Save', command=self.save).pack(side='right', padx=(0, 8))
 
     def fw_refresh(self):
-        present = lan.firewall_rule_present(self.root)
-        if present:
-            self.fw_note.config(text='Allowed: other players can reach this game.', foreground='#262')
+        st = lan.firewall_status(self.root, self.app_dir)
+        self.fw_state = st
+        if st is None:
+            self.fw_note.config(text='To host, Windows must let other players reach this PC. If they cannot, press Allow '
+                                     '(it asks for administrator rights).', foreground='#333')
+        elif all(s == 'allowed' for _w, _p, s, _k in st):
+            self.fw_note.config(text='Allowed on every network: other players can reach ' +
+                                     ' and '.join(w for w, _p, _s, _k in st) + ' on this PC.', foreground='#262')
         else:
-            self.fw_note.config(text='To host, Windows must let other players reach this game. Windows asks the first '
-                                     'time; if that was answered "Cancel", or on a VPN / public network, press '
-                                     'Allow (it asks for administrator rights).', foreground='#333')
+            blocked = any(s == 'blocked' for _w, _p, s, _k in st)
+            self.fw_note.config(text='\n'.join(lan.firewall_summary(st)) +
+                                ('\nPress Allow (it asks for administrator rights).' if blocked else
+                                 '\nTo host, press Allow (it asks for administrator rights).'),
+                                foreground='#a33' if blocked else '#333')
 
     def start_host(self):
+        st = getattr(self, 'fw_state', None)
+        host = [x for x in (st or []) if x[0] == 'the world host']
+        if host and host[0][2] != 'allowed' and messagebox.askyesno(
+                'LAN play', 'Windows Firewall does not let other players reach the world host on every network ('
+                + lan.firewall_summary(host)[0] + ').\n\nAllow it first? Windows asks for administrator rights.',
+                parent=self.win):
+            # wait for the rule: a world host started before it makes Windows ask again (and write its block rule)
+            self.saved.config(text='Answer Windows\' prompt to allow the game and the world host.')
+            self.win.update_idletasks()
+            if not lan.allow_firewall(self.root, self.app_dir, wait=True):
+                messagebox.showwarning('LAN play', 'The firewall rules were not made (the prompt was answered No, or '
+                                       'Windows refused). The world host starts anyway.', parent=self.win)
+            self.fw_refresh()
         if not lan.start_world_host(self.app_dir, self.root):
             messagebox.showerror('LAN play', 'The world host did not start.', parent=self.win)
             return
         self.saved.config(text='World host started in its own window (close that window to stop it).')
 
     def allow(self):
-        if not lan.allow_firewall(self.root):
+        if not lan.allow_firewall(self.root, self.app_dir):
             messagebox.showerror('LAN play', 'Windows did not start the administrator prompt.', parent=self.win)
             return
-        self.win.after(4000, self.fw_refresh)
-        self.saved.config(text='Answer Windows\' prompt to add the rule.')
+        for ms in (4000, 10000, 20000):
+            self.win.after(ms, self.fw_refresh)
+        self.saved.config(text='Answer Windows\' prompt to allow the game and the world host.')
 
     def save(self):
         try:

@@ -240,25 +240,32 @@ caves and buildings too. Others see your follower as you see theirs.
 **World host:** the overworld is hosted by one of the players' games. On a network it moves to another game when that player
 quits. Over the internet only the reachable player can host it, so when that player quits the others lose the world, and any
 room running through it. A world host (`uDPRE World Host.exe`, the LAN window's **Start a world host**, `uDPRE.exe lan host`)
-keeps it up on a PC that stays on - it plays no game of its own. Turn the overworld off with the **Overworld** box in the LAN
+keeps it up on a PC that stays on - it plays no game of its own; press **Allow LAN play...** on that PC first (Windows
+Firewall, below). Turn the overworld off with the **Overworld** box in the LAN
 window (`uDPRE.exe lan world off`).
 
 - **Same game, not the same mods**: players meet when they play the same game - Brilliant Diamond or Luminescent, the same
-  uDPRE version and the same Pokemon, battle, contest and Underground data. Cosmetic and own-world mods (Darker UI, Shiny Icons,
+  LAN play version (a uDPRE update that changes no game code keeps it: 0.5.5 and 0.5.6 meet; the LAN window shows it) and the
+  same Pokemon, battle, contest and Underground data. Cosmetic and own-world mods (Darker UI, Shiny Icons,
   Heal Animation, translations, Dechibified, Easy Mode, Increased Shiny Odds), the game language and Nuzlocke rules may differ;
   No Balance, or edits to Pokemon, moves or items, must match. In the game the chat box's player list (**P**) shows the games
   nearby that cannot join you, greyed, with the reason. With different mods each game shows its own: a Dechibified player's
   wardrobe outfit shows to other Dechibified players (overworld, battles, trainer cards) and to everyone else as their last
   ordinary outfit, and in a Team Up Trainer battle the Trainer's Pokemon are the
   leader's (an Easy Mode leader brings Easy Mode Trainers). **LAN play...** shows this game's build.
-- **Windows Firewall**: the PC that hosts the world must let others reach it. Windows asks the first time; if it was answered
-  Cancel, or the network is a VPN or "public" one, press **Allow LAN play...** in the LAN window. That button covers the game;
-  a world host program is allowed through Windows' own question the first time it starts.
+- **Windows Firewall**: the PC that hosts the world must let others reach it. On that PC press **Allow LAN play...** in the LAN
+  window (or `uDPRE.exe lan firewall`) before you host: it lets the game and the world host through on every network and turns
+  off the rules that block them. Windows' own question when a program starts ticks only "Private networks", and then blocks
+  that program on "public" ones - many PCs (and VPN adapters) are on a "public" network, and a block wins over a forwarded port.
+  The LAN window shows what Windows lets through. **Works over Tailscale or on the home network but not through a forwarded
+  port** = this block: press **Allow LAN play...** on the host PC.
 - **Over the internet**: there is no uDPRE server, so **one** player has to be reachable. Everyone joins that player's world, and
   Team Up, battles, the Union Room, the Colosseum, the Underground and contests all travel through the overworld link when two
   players cannot reach each other directly. All players need the overworld on. Two ways:
-  - **Port forwarding, no VPN**: one player forwards UDP + TCP 39310-39317 on their router to their PC. Everyone else adds
-    that player's public address under **Friends' addresses**; the forwarding player adds nothing. Start in any order.
+  - **Port forwarding, no VPN**: one player forwards UDP **and** TCP 39310-39317 on their router to their PC (the same port
+    numbers outside and inside; games find the world over UDP first, then join over TCP) and presses **Allow LAN play...**
+    there. Everyone else adds that player's public address under **Friends' addresses**; the forwarding player adds nothing.
+    Start in any order. A world host on that PC shows each player who joins.
   - **A virtual network**: ZeroTier, Radmin VPN or Hamachi need nothing else. With Tailscale, the others add one player's
     address under **Friends' addresses**.
 
