@@ -149,6 +149,11 @@ encounter slots; a shiny shows as one), on land and, while you surf, on the wate
 encounter. They appear and go only where the camera does not show them, and the others stay where they were over a battle.
 A Repel keeps the random encounters away, not these: you see them and can walk around them, as in the Grand Underground.
 With a LAN Team Up partner close by, walking into one starts your two-against-two battle, as a random encounter does.
+**In a LAN world** (overworld on) every player on the same map sees the same wild Pokemon: the same species, level and shininess,
+walking the same paths. The first player to touch one battles it; the others see it stand still until that battle ends. Caught,
+defeated or fled, it is gone for everyone and a new one comes after a while; run away and it walks on, anyone may battle it.
+Each player sees those of the ground on foot and those of the water while surfing. One that comes while you look at its spot
+grows in after a few seconds, and one whose time is up shrinks away.
 **Chase you** sets how many of them notice you and run at you (none, a few - the default, half, all; `roaming_chase` =
 0 .. 100 percent); the others only wander. After a battle the ones around you leave you a few seconds to walk away.
 **At once** sets how many walk around you (1 - 8, default 4). The setting is in `pc_settings.ini` (`roaming=0|1|2`,
@@ -210,7 +215,8 @@ your save, story and world are yours. Walk up to another player and press A:
   within about 20 m of each other, a wild Pokemon or an ordinary Trainer that one of you runs into becomes a battle
   for both of you (two against two) if the other one wants it. The one who ran into it sees "Waiting for ... to join" (or
   picks **Battle alone**); the other keeps playing and gets a note at the bottom of the screen for 5 seconds ("... ran into
-  wild ...!  RT: join (5)") - **RT** on a controller or **P** on the keyboard joins. No press in time, or busy in a battle of
+  a wild Snover! Join and a wild Rattata comes at you.  RT: join (5)" - the second wild Pokemon is only there if you join)
+  - **RT** on a controller or **P** on the keyboard joins. No press in time, or busy in a battle of
   their own, too far away or on another map, and the battle goes on alone. Each of
   you gains experience for your own Pokemon and the full prize money; a catch
   belongs to whoever threw the ball, and both of you register what you saw. While both wild Pokemon are up, a Poke Ball asks
@@ -235,7 +241,12 @@ your save, story and world are yours. Walk up to another player and press A:
   "nearby" = the same map, "busy" = in a battle, a contest or a room), then the games nearby that cannot join you, greyed,
   with the reason. **P** (or **RT**) hides and shows the player list and the chat box together.
   `chat_open_key=` / `chat_list_key=` in pc_settings.ini change the keys. There is no word filter: play with people you know.
-- Names over other players are on dark plates (your Team Up partner's dot is gold).
+- Names over other players are on dark plates (your Team Up partner's dot is gold). A player in a battle (wild ones too)
+  stays where they stood, with a battle balloon over their head; the player list says "in a battle".
+- **World news**: a small pop-up at the top right when anyone in the world catches, hatches or evolves a Pokemon or beats a
+  Trainer, and a **Log** tab in the chat box that keeps every line (wild Pokemon defeated too). **G** on the keyboard opens the
+  Log (`chat_log_key=` changes it); on a controller **LT** goes Chat -> Log -> closed. Options > **World Pop-ups** and
+  **World Log** turn each off (`world_toasts=0`, `world_log=0` in pc_settings.ini).
 
 **Following Pokemon:** your lead Pokemon walks with you (`uDPRE.exe lan follow 0|1|2`, or the LAN window): 0 as the game (the
 party menu's choice, outdoors), 1 the lead by itself where the game lets one follow (the default), 2 the lead everywhere it fits,
@@ -249,7 +260,8 @@ Firewall, below). Turn the overworld off with the **Overworld** box in the LAN
 window (`uDPRE.exe lan world off`).
 
 - **Same game, not the same mods**: players meet when they play the same game - Brilliant Diamond or Luminescent, the same
-  LAN play version (a uDPRE update that changes no game code keeps it: 0.5.5 and 0.5.6 meet; the LAN window shows it) and the
+  LAN play version (a uDPRE update that changes no game code keeps it: 0.5.5 and 0.5.6 meet; 0.5.8 meets only 0.5.8, and a
+  separate world host must be the 0.5.8 `uDPRE World Host.exe`; the LAN window shows it) and the
   same Pokemon, battle, contest and Underground data. Cosmetic and own-world mods (Darker UI, Shiny Icons,
   Heal Animation, translations, Dechibified, Easy Mode, Increased Shiny Odds), the game language and Nuzlocke rules may differ;
   No Balance, or edits to Pokemon, moves or items, must match. In the game the chat box's player list (**P**) shows the games
