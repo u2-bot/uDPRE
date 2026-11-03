@@ -260,8 +260,8 @@ Firewall, below). Turn the overworld off with the **Overworld** box in the LAN
 window (`uDPRE.exe lan world off`).
 
 - **Same game, not the same mods**: players meet when they play the same game - Brilliant Diamond or Luminescent, the same
-  LAN play version (a uDPRE update that changes no game code keeps it: 0.5.5 and 0.5.6 meet; 0.5.8 meets only 0.5.8, and a
-  separate world host must be the 0.5.8 `uDPRE World Host.exe`; the LAN window shows it) and the
+  LAN play version (a uDPRE update that changes no game code keeps it: 0.5.5 and 0.5.6 meet; 0.5.9 meets only 0.5.9, and a
+  separate world host must be the `uDPRE World Host.exe` of uDPRE 0.5.9; the LAN window shows it) and the
   same Pokemon, battle, contest and Underground data. Cosmetic and own-world mods (Darker UI, Shiny Icons,
   Heal Animation, translations, Dechibified, Easy Mode, Increased Shiny Odds), the game language and Nuzlocke rules may differ;
   No Balance, or edits to Pokemon, moves or items, must match. In the game the chat box's player list (**P**) shows the games
