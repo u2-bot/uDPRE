@@ -9,6 +9,7 @@ terms:
 | Unity packages compiled into the player (uGUI, TextMesh Pro, Timeline) | `GameAssembly.dll` | Unity Companion License |
 | Audiokinetic Wwise 2019.2 sound engine runtime | `Dpr_Data/Plugins/x86_64/AkSoundEngine.dll`, `AkWaapiClient.dll` | Copyright Audiokinetic Inc.; distributed as part of the game's runtime under Audiokinetic's license terms |
 | DOTween (compiled into the player) | `GameAssembly.dll` | Copyright Demigiant |
+| SDL 2.32.10 (PlayStation and Nintendo controllers) | `Dpr_Data/Plugins/x86_64/SDL2.dll` | zlib license, `udpre/licenses/SDL2/`; source at https://www.libsdl.org/ |
 | Python 3.13 and the libraries of its Windows build (OpenSSL, libffi, zlib, bzip2, xz, Tcl/Tk ...) | `udpre_runtime/` | PSF License and the licenses listed in Python's `LICENSE.txt` |
 | Python packages of the converter (UnityPy, texture2ddecoder, numpy, lz4, Pillow and their dependencies) | `udpre_runtime/` | each package's own license (MIT, BSD-3-Clause, MIT-CMU, MPL-2.0 ...) |
 | PyInstaller bootloader | `uDPRE.exe` | GPL-2.0-or-later with the PyInstaller bootloader exception |

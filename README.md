@@ -55,6 +55,10 @@ Releases on the repository page.
   Luminescent pack: `%USERPROFILE%\AppData\LocalLow\DefaultCompanyLumi\`
 - Settings: `pc_settings.ini` in the same folder, and the in-game Options menu (resolution, frame rate, V-Sync, keyboard and
   controller buttons, fast-forward)
+- Controllers: Xbox and most PC pads work as they are. **DualSense, DualShock 4, Switch Pro Controller and Joy-Cons** work
+  directly over USB or Bluetooth (Beta), without Steam Input or DS4Windows, with rumble and with motion for the Pokedex's sound
+  effects. Buttons go by position, as on the Switch (a DualSense's Circle is A, Cross is B); the on-screen prompts keep the
+  Switch's letters. `pad_native=0` in pc_settings.ini turns this off, `pad_motion=0` / `pad_rumble=0` just those two.
 - Typing (your name, nicknames, box names, codes): in the game's own window - type on the keyboard (your IME works for
   Japanese, Korean and Chinese), or pick characters from the on-screen grid with a controller (A type, B delete, Y space,
   L / R page, + OK) or the mouse. `swkbd=dialog` in pc_settings.ini brings back the old separate dialog window.
@@ -261,8 +265,8 @@ Firewall, below). Turn the overworld off with the **Overworld** box in the LAN
 window (`uDPRE.exe lan world off`).
 
 - **Same game, not the same mods**: players meet when they play the same game - Brilliant Diamond or Luminescent, the same
-  LAN play version (a uDPRE update that changes no game code keeps it: 0.5.5 and 0.5.6 meet; 0.5.10 meets only 0.5.10, and a
-  separate world host must be the `uDPRE World Host.exe` of uDPRE 0.5.10; the LAN window shows it) and the
+  LAN play version (a uDPRE update that changes no game code keeps it: 0.5.5 and 0.5.6 meet; 0.5.11 meets only 0.5.11, and a
+  separate world host must be the `uDPRE World Host.exe` of uDPRE 0.5.11; the LAN window shows it) and the
   same Pokemon, battle, contest and Underground data. Cosmetic and own-world mods (Darker UI, Shiny Icons,
   Heal Animation, translations, Dechibified, Easy Mode, Increased Shiny Odds), the game language and Nuzlocke rules may differ;
   No Balance, or edits to Pokemon, moves or items, must match. In the game the chat box's player list (**P**) shows the games

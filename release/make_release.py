@@ -155,6 +155,11 @@ def collect_licenses(runtime, dst):
                 shutil.copyfile(os.path.join(HERE, 'licenses', f), os.path.join(dst, sub, f.split('-', 1)[1]))
         index.append('libvpx (udpre_runtime/vpx)\t1.17.0\tBSD-3-Clause + Google patent grant (PATENTS.txt)')
         index.append('winpthreads (udpre_runtime/vpx, mingw-w64)\t-\tMIT')
+    # SDL2 (Dpr_Data/Plugins/x86_64: PlayStation and Nintendo controllers in the game)
+    os.makedirs(os.path.join(dst, 'SDL2'), exist_ok=True)
+    for f in ('SDL2-LICENSE.txt', 'SDL2-README-SDL.txt'):
+        shutil.copyfile(os.path.join(HERE, 'licenses', f), os.path.join(dst, 'SDL2', f.split('-', 1)[1]))
+    index.append('SDL2 (Dpr_Data/Plugins/x86_64)\t2.32.10\tZlib')
     with open(os.path.join(dst, 'index.txt'), 'w', encoding='utf-8', newline='\n') as f:
         f.write('package\tversion\tlicense\n' + '\n'.join(index) + '\n')
     return len(index)
