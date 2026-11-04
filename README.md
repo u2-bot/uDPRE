@@ -158,7 +158,8 @@ grows in after a few seconds, and one whose time is up shrinks away.
 0 .. 100 percent); the others only wander. After a battle the ones around you leave you a few seconds to walk away.
 **At once** sets how many walk around you (1 - 8, default 4). The setting is in `pc_settings.ini` (`roaming=0|1|2`,
 `roaming_count=1..8`); the game reads it when it starts - no conversion is needed, but the game must come with uDPRE 0.5.2
-or newer. From a command prompt:
+or newer. The unmodded game and Luminescent keep their settings apart; what you choose here goes with the folder, so a
+conversion that switches it between them takes your choice along (the LAN settings too). From a command prompt:
 `uDPRE.exe roaming show`, `uDPRE.exe roaming 0|1|2`, `uDPRE.exe roaming count N`, `uDPRE.exe roaming chase N`.
 
 ## Nuzlocke (Beta)
@@ -260,8 +261,8 @@ Firewall, below). Turn the overworld off with the **Overworld** box in the LAN
 window (`uDPRE.exe lan world off`).
 
 - **Same game, not the same mods**: players meet when they play the same game - Brilliant Diamond or Luminescent, the same
-  LAN play version (a uDPRE update that changes no game code keeps it: 0.5.5 and 0.5.6 meet; 0.5.9 meets only 0.5.9, and a
-  separate world host must be the `uDPRE World Host.exe` of uDPRE 0.5.9; the LAN window shows it) and the
+  LAN play version (a uDPRE update that changes no game code keeps it: 0.5.5 and 0.5.6 meet; 0.5.10 meets only 0.5.10, and a
+  separate world host must be the `uDPRE World Host.exe` of uDPRE 0.5.10; the LAN window shows it) and the
   same Pokemon, battle, contest and Underground data. Cosmetic and own-world mods (Darker UI, Shiny Icons,
   Heal Animation, translations, Dechibified, Easy Mode, Increased Shiny Odds), the game language and Nuzlocke rules may differ;
   No Balance, or edits to Pokemon, moves or items, must match. In the game the chat box's player list (**P**) shows the games

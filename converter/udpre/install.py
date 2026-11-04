@@ -706,6 +706,13 @@ def run(root, dump_selected=None, workers=None, progress=print, log=print, mods=
     progress('player files', 0, 3)
     apply_player(p, setup, cfg, log)
     save_config(p, cfg)
+    # what the window set (Wild Pokemon you can see, LAN) goes with the folder when its game changed (unmodded <-> a pack's game
+    # code: another settings file) - set before the first conversion with Luminescent, it had gone to the unmodded game's file
+    from . import lan
+    try:
+        lan.carry_settings(p.root, log)
+    except OSError as e:
+        log(f'settings: could not carry this folder\'s settings to its game ({e})')
     workers = workers or default_workers()
     from .shaderpack import ShaderPack
     pack = ShaderPack(setup.pack)

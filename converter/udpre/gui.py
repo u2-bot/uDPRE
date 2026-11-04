@@ -392,7 +392,16 @@ class App:
 
     # --- wild Pokemon you can see --------------------------------------------------------------------------------------
     def wild_refresh(self, saved=False):
-        from . import roaming
+        from . import lan, roaming
+        # the folder runs another game now (a conversion with or without a pack): that game's own settings file - show its values
+        # (setting the variables runs no save: only the controls' own events do)
+        path = lan.settings_path(self.paths.root)
+        if getattr(self, 'wild_path', path) != path:
+            w = roaming.read(self.paths.root)
+            self.wild_var.set(roaming.CHOICES[w['mode']])
+            self.wild_count.set(str(w['count']))
+            self.wild_chase.set(roaming.chase_label(w['chase']))
+        self.wild_path = path
         try:
             state, pack = roaming.support(self.paths.root)
         except Exception:       # an unreadable mods folder is reported by the Mods box; judge the game files alone

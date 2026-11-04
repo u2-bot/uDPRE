@@ -34,7 +34,7 @@ HOST_RULE_NAME = 'uDPRE World Host'
 # the uDPRE version whose game player and LAN data this one plays with: lan.txt's release, so a uDPRE update that changes no
 # game code (the converter, the window, the README) still meets the players of that version. Raise it to __version__ with
 # every release that ships a new game player or World Host.
-LAN_RELEASE = '0.5.9'
+LAN_RELEASE = '0.5.10'
 
 
 def path(root):
@@ -208,12 +208,20 @@ def ini_values(root):
     return vals
 
 
-def write_keys(root, new, comment):
+def write_keys(root, new, comment, remember=True):
     """sets the keys of `new` in pc_settings.ini, every other line kept as it is; keys not there yet go at the end in that
-    order, under the comment line; -> the file path"""
+    order, under the comment line; -> the file path. remember: this folder keeps them (window_settings) so that they go with
+    the folder when it changes games (carry_settings)"""
     p = settings_path(root)
     if not p:
         raise OSError('no game in this folder yet (convert first)')
+    _write_keys(p, new, comment)
+    if remember:
+        _remember(root, new, p)
+    return p
+
+
+def _write_keys(p, new, comment):
     lines, done = [], set()
     for line in _ini_lines(p):
         k = line.strip().partition('=')[0].strip().lower()
@@ -233,6 +241,67 @@ def write_keys(root, new, comment):
         f.write('\n'.join(lines) + '\n')
     os.replace(tmp, p)
     return p
+
+
+# Every game keeps its own settings file (LocalLow/<company>/<product>, from Dpr_Data/app.info): the unmodded game and a pack's
+# game code (Luminescent: DefaultCompanyLumi) read different ones. What this folder's window sets goes to the file of the game the
+# folder runs AT THAT MOMENT - a fresh folder runs the unmodded game until its first conversion with a pack, so a choice made
+# before it went to the unmodded game's file and the pack's game never saw it. The folder keeps what its window set and where it
+# went (udpre/state/window_settings.json, apart from config.json, which a running conversion holds and writes back); every
+# conversion that changes the folder's game carries those keys to the new game's file.
+WINDOW_SETTINGS = 'window_settings.json'
+CARRY_COMMENT = '# uDPRE: the settings chosen in its window for this folder (they go with the folder when it changes games)'
+
+
+def _window_file(root):
+    return os.path.join(root, 'udpre', 'state', WINDOW_SETTINGS)
+
+
+def window_settings(root):
+    """-> {'path': the settings file the window wrote last, 'keys': {key: value}} of this folder (empty = none yet)"""
+    try:
+        with open(_window_file(root), encoding='utf-8') as f:
+            w = json.load(f)
+        return w if isinstance(w, dict) and isinstance(w.get('keys'), dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_window_settings(root, w):
+    f = _window_file(root)
+    os.makedirs(os.path.dirname(f), exist_ok=True)
+    tmp = f + '.part'
+    with open(tmp, 'w', encoding='utf-8') as h:
+        json.dump(w, h, indent=1, sort_keys=True)
+    os.replace(tmp, f)
+
+
+def _remember(root, new, p):
+    try:
+        w = window_settings(root)
+        keys = dict(w.get('keys') or {})
+        keys.update(new)
+        _save_window_settings(root, {'path': p, 'keys': keys})
+    except OSError:
+        pass    # (the settings file is written; only the carry-over to another game of this folder is lost)
+
+
+def _same_file(a, b):
+    return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+
+def carry_settings(root, log=print):
+    """after the game code of this folder was put in place (install.run, apply_player): when the folder runs another game than
+    the one its window's settings went to (unmodded <-> a pack's game code), those settings go to that game's file too.
+    -> the file written, or None (nothing set in the window, or the same game)"""
+    w = window_settings(root)
+    keys, was, now = w.get('keys') or {}, w.get('path'), settings_path(root)
+    if not keys or not was or not now or _same_file(was, now):
+        return None
+    _write_keys(now, keys, CARRY_COMMENT)
+    _save_window_settings(root, {'path': now, 'keys': dict(keys)})
+    log(f'settings: what this folder\'s window set ({", ".join(sorted(keys))}) goes with its game now ({now})')
+    return now
 
 
 def read_settings(root):
