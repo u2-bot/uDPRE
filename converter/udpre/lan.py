@@ -34,7 +34,7 @@ HOST_RULE_NAME = 'uDPRE World Host'
 # the uDPRE version whose game player and LAN data this one plays with: lan.txt's release, so a uDPRE update that changes no
 # game code (the converter, the window, the README) still meets the players of that version. Raise it to __version__ with
 # every release that ships a new game player or World Host.
-LAN_RELEASE = '0.5.11'
+LAN_RELEASE = '0.5.12'
 
 
 def path(root):
