@@ -221,8 +221,11 @@ your save, story and world are yours. Walk up to another player and press A:
   for both of you (two against two) if the other one wants it. The one who ran into it sees "Waiting for ... to join" (or
   picks **Battle alone**); the other keeps playing and gets a note at the bottom of the screen for 5 seconds ("... ran into
   a wild Snover! Join and a wild Rattata comes at you.  RT: join (5)" - the second wild Pokemon is only there if you join)
-  - **RT** on a controller or **P** on the keyboard joins. No press in time, or busy in a battle of
-  their own, too far away or on another map, and the battle goes on alone. Each of
+  - **RT** on a controller or **P** on the keyboard joins. No press in time, too far away or on another map, and the battle
+  goes on alone. If your friend is busy right then (in a battle of their own, a menu or an event on the same map), you choose:
+  **Wait for ...** holds your encounter with no time limit, your friend gets a chat line and, once free and close by, that same
+  note; **Battle alone** stays there the whole time. If you both run into one at the same moment, one of you battles alone and
+  the other waits for them. Each of
   you gains experience for your own Pokemon and the full prize money; a catch
   belongs to whoever threw the ball, and both of you register what you saw. While both wild Pokemon are up, a Poke Ball asks
   which one to throw at; catching one does not end the battle while the other is still up, so either of you can catch the
@@ -265,8 +268,8 @@ Firewall, below). Turn the overworld off with the **Overworld** box in the LAN
 window (`uDPRE.exe lan world off`).
 
 - **Same game, not the same mods**: players meet when they play the same game - Brilliant Diamond or Luminescent, the same
-  LAN play version (a uDPRE update that changes no game code keeps it: 0.5.5 and 0.5.6 meet; 0.5.12 meets only 0.5.12, and a
-  separate world host must be the `uDPRE World Host.exe` of uDPRE 0.5.12; the LAN window shows it) and the
+  LAN play version (a uDPRE update that changes no game code keeps it: 0.5.5 and 0.5.6 meet; 0.5.13 meets only 0.5.13, and a
+  separate world host must be the `uDPRE World Host.exe` of uDPRE 0.5.13; the LAN window shows it) and the
   same Pokemon, battle, contest and Underground data. Cosmetic and own-world mods (Darker UI, Shiny Icons,
   Heal Animation, translations, Dechibified, Easy Mode, Increased Shiny Odds), the game language and Nuzlocke rules may differ;
   No Balance, or edits to Pokemon, moves or items, must match. In the game the chat box's player list (**P**) shows the games
