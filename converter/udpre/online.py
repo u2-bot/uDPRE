@@ -13,10 +13,12 @@ changed. Installing builds the new folder next to the old one (kept parts hard-l
 swaps; the old folder waits in udpre/state/online/previous for one rollback.
 """
 import base64
+import functools
 import hashlib
 import json
 import os
 import shutil
+import ssl
 import sys
 import tarfile
 import time
@@ -65,9 +67,57 @@ def file_url(relay, tag, name):
 
 # --- HTTP -------------------------------------------------------------------------------------------------------------
 
+def _shipped_roots():
+    """the root certificates that ship with uDPRE (certifi's Mozilla list): a file path, or None"""
+    try:
+        import certifi
+        path = certifi.where()
+    except Exception:
+        return None
+    return path if path and os.path.isfile(path) else None
+
+
+@functools.lru_cache(maxsize=None)
+def _ssl_context(system=True):
+    """HTTPS trust. system=True: Windows' certificate stores (a company's own root keeps working) plus the roots that ship
+    with uDPRE. Windows can hold an expired cross-signed copy of a root without the root itself (e.g. ISRG Root X2 signed by
+    ISRG Root X1, expired 2025-09-15, on the Let's Encrypt chain of the relay): OpenSSL then builds the chain through the
+    expired copy and fails with "certificate has expired". With the shipped root in the same store it takes the valid one.
+    system=False: the shipped roots alone, for one more try when the first check fails (None when uDPRE has none)."""
+    roots = _shipped_roots()
+    if not system:
+        try:
+            return ssl.create_default_context(cafile=roots) if roots else None
+        except (OSError, ssl.SSLError):
+            return None
+    ctx = ssl.create_default_context()
+    if roots:
+        try:
+            ctx.load_verify_locations(cafile=roots)
+        except (OSError, ssl.SSLError):
+            pass
+    return ctx
+
+
+def _cert_failed(e):
+    return isinstance(getattr(e, 'reason', None), ssl.SSLCertVerificationError)
+
+
+def _why(e):
+    reason = getattr(e, 'reason', e)
+    if isinstance(reason, ssl.SSLCertVerificationError):
+        return f'{reason} - check that the date and time of this PC are right'
+    return reason
+
+
 def _open(url, headers=None, timeout=30):
     req = urllib.request.Request(url, headers=dict({'User-Agent': USER_AGENT}, **(headers or {})))
-    return urllib.request.urlopen(req, timeout=timeout)
+    try:
+        return urllib.request.urlopen(req, timeout=timeout, context=_ssl_context())
+    except urllib.error.URLError as e:
+        if not _cert_failed(e) or _ssl_context(False) is None:
+            raise
+    return urllib.request.urlopen(req, timeout=timeout, context=_ssl_context(False))
 
 
 def get_bytes(url, limit=64 << 20):
@@ -77,7 +127,7 @@ def get_bytes(url, limit=64 << 20):
     except urllib.error.HTTPError as e:
         raise OnlineError(f'{url}: HTTP {e.code}') from None
     except (urllib.error.URLError, OSError) as e:
-        raise OnlineError(f'{url}: {getattr(e, "reason", e)}') from None
+        raise OnlineError(f'{url}: {_why(e)}') from None
     if len(data) > limit:
         raise OnlineError(f'{url}: larger than expected')
     return data
@@ -114,7 +164,7 @@ def download(url, dest, size, sha256, progress=None, stop=None):
             raise
         except (urllib.error.URLError, OSError) as e:
             if attempt == 3:
-                raise OnlineError(f'download failed: {getattr(e, "reason", e)}') from None
+                raise OnlineError(f'download failed: {_why(e)}') from None
             time.sleep(2 * (attempt + 1))
             have = os.path.getsize(part) if os.path.isfile(part) else 0
     if have != size:

@@ -11,7 +11,7 @@ terms:
 | DOTween (compiled into the player) | `GameAssembly.dll` | Copyright Demigiant |
 | SDL 2.32.10 (PlayStation and Nintendo controllers) | `Dpr_Data/Plugins/x86_64/SDL2.dll` | zlib license, `udpre/licenses/SDL2/`; source at https://www.libsdl.org/ |
 | Python 3.13 and the libraries of its Windows build (OpenSSL, libffi, zlib, bzip2, xz, Tcl/Tk ...) | `udpre_runtime/` | PSF License and the licenses listed in Python's `LICENSE.txt` |
-| Python packages of the converter (UnityPy, texture2ddecoder, numpy, lz4, Pillow and their dependencies) | `udpre_runtime/` | each package's own license (MIT, BSD-3-Clause, MIT-CMU, MPL-2.0 ...) |
+| Python packages of the converter (UnityPy, texture2ddecoder, numpy, lz4, Pillow, certifi = Mozilla's root certificates, and their dependencies) | `udpre_runtime/` | each package's own license (MIT, BSD-3-Clause, MIT-CMU, MPL-2.0 ...) |
 | PyInstaller bootloader | `uDPRE.exe` | GPL-2.0-or-later with the PyInstaller bootloader exception |
 | libvpx 1.17.0 (re-encodes a mod's VP9 movies to VP8) and the mingw-w64 winpthreads runtime it uses; the Windows build of PyAV 19.0.2's wheel | `udpre_runtime/vpx/` | libvpx: BSD-3-Clause with Google's patent grant; winpthreads: MIT (texts in `udpre/licenses/libvpx/`, `udpre/licenses/winpthreads/`) |
 

@@ -40,6 +40,7 @@ def main():
             '--specpath', os.path.join(work, 'spec'), '--paths', os.path.join(REPO, 'converter'),
             '--collect-all', 'UnityPy', '--collect-all', 'texture2ddecoder', '--hidden-import', 'udpre.gui',
             '--collect-submodules', 'udpre',            # the Studio's pages are imported by name (importlib)
+            '--hidden-import', 'certifi', '--collect-data', 'certifi',   # online.py: the root certificates uDPRE ships
             '--exclude-module', 'av', '--exclude-module', 'matplotlib', '--exclude-module', 'IPython',
             '--exclude-module', 'pytest', '--exclude-module', 'setuptools',
             os.path.join(REPO, 'converter', 'uDPRE.py')]
@@ -56,6 +57,8 @@ def main():
         if got != want:
             sys.exit(f'{p}: sha256 {got}, expected {want} (PyAV 19.0.2 wheel)')
         shutil.copyfile(p, os.path.join(dst, name))
+    if not os.path.isfile(os.path.join(dist, 'uDPRE', 'udpre_runtime', 'certifi', 'cacert.pem')):
+        sys.exit('certifi/cacert.pem is not in the runtime - online.py needs the root certificates it ships')
     if glob.glob(os.path.join(dist, 'uDPRE', 'udpre_runtime', 'av*')):
         sys.exit('PyAV ended up in the runtime - it must not ship (GPL encoders in its FFmpeg build)')
     exe = os.path.join(dist, 'uDPRE', 'uDPRE.exe')

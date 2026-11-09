@@ -46,6 +46,8 @@ By hand (or without internet):
    time as the first run). Then press Play.
 
 Start uDPRE.exe (not Dpr.exe) the first time after an update. If you moved or deleted the dump, uDPRE asks for it again.
+If uDPRE 0.5.13 or older says "Mod updates could not be checked: ... certificate has expired", update to 0.5.14 by hand
+once: from 0.5.14 on, uDPRE carries its own root certificates and no longer trusts an expired one it finds on Windows.
 Saves are not stored in the uDPRE folder, so they always carry over. To be told about new releases, use Watch > Custom >
 Releases on the repository page.
 
@@ -268,8 +270,8 @@ Firewall, below). Turn the overworld off with the **Overworld** box in the LAN
 window (`uDPRE.exe lan world off`).
 
 - **Same game, not the same mods**: players meet when they play the same game - Brilliant Diamond or Luminescent, the same
-  LAN play version (a uDPRE update that changes no game code keeps it: 0.5.5 and 0.5.6 meet; 0.5.13 meets only 0.5.13, and a
-  separate world host must be the `uDPRE World Host.exe` of uDPRE 0.5.13; the LAN window shows it) and the
+  LAN play version (a uDPRE update that changes no game code keeps it: 0.5.13 and 0.5.14 meet, and a separate world host must be
+  the `uDPRE World Host.exe` of uDPRE 0.5.13 or 0.5.14; the LAN window shows it) and the
   same Pokemon, battle, contest and Underground data. Cosmetic and own-world mods (Darker UI, Shiny Icons,
   Heal Animation, translations, Dechibified, Easy Mode, Increased Shiny Odds), the game language and Nuzlocke rules may differ;
   No Balance, or edits to Pokemon, moves or items, must match. In the game the chat box's player list (**P**) shows the games

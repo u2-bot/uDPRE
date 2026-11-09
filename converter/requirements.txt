@@ -3,3 +3,4 @@ UnityPy==1.25.2
 texture2ddecoder==1.0.6
 numpy==2.5.1
 lz4==4.4.5
+certifi==2026.6.17
